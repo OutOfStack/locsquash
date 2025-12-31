@@ -16,6 +16,12 @@ cd locsquash
 go build -o locsquash
 ```
 
+Build with version:
+
+```bash
+go build -ldflags "-X main.version=v1.0.0" -o locsquash
+```
+
 ## Usage
 
 ```bash
@@ -32,6 +38,7 @@ locsquash -n <count> [options]
 - `-stash` - Auto-stash uncommitted changes before squashing
 - `-dry-run` - Preview the git commands without executing them
 - `-print-recovery` - Print recovery commands and exit
+- `-v`, `-version` - Print version and exit
 
 ## Examples
 
@@ -66,6 +73,32 @@ locsquash -n 3 --stash
 3. Performs a soft reset to `HEAD~N`
 4. Creates a new commit with all changes, preserving the most recent commit's date
 5. Restores stashed changes if applicable
+
+## Testing
+
+Run tests locally:
+
+```bash
+go test -v ./...
+```
+
+Run tests in Docker:
+
+```bash
+docker build -f Dockerfile.test -t locsquash-test .
+docker run --rm locsquash-test
+```
+
+## Releasing
+
+To create a new release:
+
+```bash
+git tag v1.0.0
+git push --tags
+```
+
+This triggers CI to build binaries for all platforms (Linux, macOS, Windows) and create a GitHub Release with that version.
 
 ## Recovery
 

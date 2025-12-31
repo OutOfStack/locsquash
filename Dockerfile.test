@@ -1,0 +1,25 @@
+# Dockerfile for running tests in isolated environment
+FROM golang:1.25-alpine3.22
+
+# Install git
+RUN apk add --no-cache git
+
+# Configure git for test commits
+RUN git config --global user.email "test@ci.local" \
+    && git config --global user.name "CI Test" \
+    && git config --global init.defaultBranch main
+
+WORKDIR /app
+
+# Install dependencies
+COPY go.mod ./
+RUN go mod download
+
+# Copy source code
+COPY . .
+
+# Build the binary
+RUN go build -o locsquash .
+
+# Run tests
+CMD ["go", "test", "-v", "-race", "./..."]
