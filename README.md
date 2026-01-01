@@ -13,7 +13,8 @@ Or build from source:
 ```bash
 git clone https://github.com/OutOfStack/locsquash.git
 cd locsquash
-go build -o locsquash
+make build                    # version = dev
+make build VERSION=v1.0.0     # version = v1.0.0
 ```
 
 ## Usage
@@ -32,6 +33,7 @@ locsquash -n <count> [options]
 - `-stash` - Auto-stash uncommitted changes before squashing
 - `-dry-run` - Preview the git commands without executing them
 - `-print-recovery` - Print recovery commands and exit
+- `-v`, `-version` - Print version and exit
 
 ## Examples
 
@@ -66,6 +68,27 @@ locsquash -n 3 --stash
 3. Performs a soft reset to `HEAD~N`
 4. Creates a new commit with all changes, preserving the most recent commit's date
 5. Restores stashed changes if applicable
+
+## Development
+
+```bash
+make build                # Build binary to bin/
+make build VERSION=v1.0.0 # Build with specific version
+make run                  # Run without building
+make test                 # Run tests with race detector
+make test-docker          # Run tests in Docker
+```
+
+## Releasing
+
+To create a new release:
+
+```bash
+git tag v1.0.0
+git push --tags
+```
+
+This triggers CI to build binaries for all platforms (Linux, macOS, Windows) and create a GitHub Release with that version.
 
 ## Recovery
 
