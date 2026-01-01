@@ -3,7 +3,6 @@ package main
 import (
 	"flag"
 	"fmt"
-	"log"
 	"os"
 	"os/exec"
 	"strings"
@@ -13,7 +12,7 @@ import (
 func main() {
 	// Check git installed
 	if _, err := exec.LookPath("git"); err != nil {
-		log.Fatal("Error: git is not installed or not found in PATH.")
+		fatal("Error: git is not installed or not found in PATH.")
 	}
 
 	var input UserInput
@@ -35,25 +34,25 @@ func main() {
 	}
 
 	if input.SquashCount < 2 {
-		log.Fatal("Error: -n (Number of last commits to squash) must be at least 2.")
+		fatal("Error: -n (Number of last commits to squash) must be at least 2.")
 	}
 
 	// Check if in git repo
 	if err := ensureInsideGitRepo(); err != nil {
-		log.Fatalf("Error: %v", err)
+		fatal("Error: %v", err)
 	}
 
 	// Check if git has an operation in progress
 	if err := ensureNoInProgressOps(); err != nil {
-		log.Fatalf("Error: %v", err)
+		fatal("Error: %v", err)
 	}
 
 	totalCommits, err := gitCommitCount()
 	if err != nil {
-		log.Fatalf("Error retrieving commit count: %v", err)
+		fatal("Error retrieving commit count: %v", err)
 	}
 	if input.SquashCount >= totalCommits {
-		log.Fatalf("Error: repository has %d commits; -n must be at most %d (you can't squash the entire history).", totalCommits, totalCommits-1)
+		fatal("Error: repository has %d commits; -n must be at most %d (you can't squash the entire history).", totalCommits, totalCommits-1)
 	}
 
 	info := SquashInfo{UserInput: input}
@@ -61,17 +60,17 @@ func main() {
 	// Check for uncommitted changes
 	info.Dirty, err = hasUncommittedChanges()
 	if err != nil {
-		log.Fatalf("Error checking git status: %v", err)
+		fatal("Error checking git status: %v", err)
 	}
 	if info.Dirty && !input.AllowStash {
-		log.Fatal("Error: uncommitted changes detected. Commit/stash them or rerun with --stash / -st.")
+		fatal("Error: uncommitted changes detected. Commit/stash them or rerun with --stash / -st.")
 	}
 
 	// Compute result commit
 	oldestCommitRef := fmt.Sprintf("HEAD~%d", info.SquashCount-1)
 	oldestMessage, err := gitLogSingle(oldestCommitRef, "%B")
 	if err != nil {
-		log.Fatalf("Failed to retrieve oldest commit message: %v", err)
+		fatal("Failed to retrieve oldest commit message: %v", err)
 	}
 	oldestMessage = strings.TrimSpace(oldestMessage)
 
@@ -82,7 +81,7 @@ func main() {
 
 	recentDate, err := gitLogSingle("HEAD", "%cI")
 	if err != nil {
-		log.Fatalf("Failed to retrieve HEAD commit date: %v", err)
+		fatal("Failed to retrieve HEAD commit date: %v", err)
 	}
 	info.RecentDate = strings.TrimSpace(recentDate)
 
@@ -106,7 +105,7 @@ func main() {
 	if info.Dirty && info.AllowStash {
 		ref, sErr := stashPushAndGetRef()
 		if sErr != nil {
-			log.Fatalf("Failed to stash changes: %v", sErr)
+			fatal("Failed to stash changes: %v", sErr)
 		}
 		stashedRef = ref
 		fmt.Printf("Stashed working directory changes as %s\n", stashedRef)
@@ -114,32 +113,37 @@ func main() {
 
 	// Create recovery branch before rewriting history.
 	if err = runGitCommand("branch", info.BackupName, "HEAD"); err != nil {
-		log.Fatalf("Failed to create backup branch %q: %v", info.BackupName, err)
+		fatal("Failed to create backup branch %q: %v", info.BackupName, err)
 	}
 	fmt.Printf("Created backup branch: %s (recovery point)\n", info.BackupName)
 
 	// Soft reset to HEAD~N
 	fmt.Printf("Performing soft reset to %s...\n", info.ResetRef)
 	if err = runGitCommand("reset", "--soft", info.ResetRef); err != nil {
-		log.Fatalf("Failed to perform soft reset: %v\nRecovery: git reset --hard %s", err, info.BackupName)
+		fatal("Failed to perform soft reset: %v\nRecovery: git reset --hard %s", err, info.BackupName)
 	}
 
 	// Commit staged changes as one, with date = most recent commit date
 	fmt.Println("Creating squashed commit...")
 	if err = gitCommitWithDates(info.RecentDate, info.CommitMessage); err != nil {
-		log.Fatalf("Failed to create squashed commit: %v\nRecovery: git reset --hard %s", err, info.BackupName)
+		fatal("Failed to create squashed commit: %v\nRecovery: git reset --hard %s", err, info.BackupName)
 	}
 
 	// Reapply stash if we created one: apply first, then drop only if success
 	if stashedRef != "" {
 		fmt.Printf("Reapplying stashed changes from %s...\n", stashedRef)
 		if err = runGitCommand("stash", "apply", stashedRef); err != nil {
-			log.Fatalf("Stash apply failed (stash preserved as %s): %v\nRecovery: git reset --hard %s", stashedRef, err, info.BackupName)
+			fatal("Stash apply failed (stash preserved as %s): %v\nRecovery: git reset --hard %s", stashedRef, err, info.BackupName)
 		}
 		if err = runGitCommand("stash", "drop", stashedRef); err != nil {
-			log.Fatalf("Applied stash but failed to drop %s: %v\nYou can drop it manually later.\nRecovery: git reset --hard %s", stashedRef, err, info.BackupName)
+			fatal("Applied stash but failed to drop %s: %v\nYou can drop it manually later.\nRecovery: git reset --hard %s", stashedRef, err, info.BackupName)
 		}
 	}
 
 	fmt.Printf("Successfully squashed the last %d commits.\nBackup branch (optional): %s\n", info.SquashCount, info.BackupName)
+}
+
+func fatal(format string, args ...any) {
+	fmt.Fprintf(os.Stderr, format+"\n", args...)
+	os.Exit(1)
 }

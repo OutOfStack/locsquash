@@ -13,13 +13,8 @@ Or build from source:
 ```bash
 git clone https://github.com/OutOfStack/locsquash.git
 cd locsquash
-go build -o locsquash
-```
-
-Build with version:
-
-```bash
-go build -ldflags "-X main.version=v1.0.0" -o locsquash
+make build                    # version = dev
+make build VERSION=v1.0.0     # version = v1.0.0
 ```
 
 ## Usage
@@ -74,19 +69,14 @@ locsquash -n 3 --stash
 4. Creates a new commit with all changes, preserving the most recent commit's date
 5. Restores stashed changes if applicable
 
-## Testing
-
-Run tests locally:
+## Development
 
 ```bash
-go test -v ./...
-```
-
-Run tests in Docker:
-
-```bash
-docker build -f Dockerfile.test -t locsquash-test .
-docker run --rm locsquash-test
+make build                # Build binary to bin/
+make build VERSION=v1.0.0 # Build with specific version
+make run                  # Run without building
+make test                 # Run tests with race detector
+make test-docker          # Run tests in Docker
 ```
 
 ## Releasing

@@ -21,22 +21,7 @@ func gitStdout(args ...string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("%v: %s", err, strings.TrimSpace(errBuf.String()))
 	}
-	return out.String(), nil
-}
-
-// gitStdoutInDir runs a git command in a specific directory and returns its stdout
-func gitStdoutInDir(dir string, args ...string) (string, error) {
-	cmd := exec.Command("git", args...)
-	cmd.Dir = dir
-	var out bytes.Buffer
-	var errBuf bytes.Buffer
-	cmd.Stdout = &out
-	cmd.Stderr = &errBuf
-	err := cmd.Run()
-	if err != nil {
-		return "", fmt.Errorf("%v: %s", err, strings.TrimSpace(errBuf.String()))
-	}
-	return out.String(), nil
+	return strings.TrimSpace(out.String()), nil
 }
 
 // runGitCommand runs a git command with output to stdout/stderr
@@ -53,7 +38,7 @@ func ensureInsideGitRepo() error {
 	if err != nil {
 		return errors.New("not a git repository (or any of the parent directories)")
 	}
-	if strings.TrimSpace(out) != "true" {
+	if out != "true" {
 		return errors.New("not inside a git work tree")
 	}
 	return nil
@@ -77,7 +62,7 @@ func hasUncommittedChanges() (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	return strings.TrimSpace(out) != "", nil
+	return out != "", nil
 }
 
 // stashPushAndGetRef stashes uncommitted changes and returns the stash reference
@@ -98,7 +83,7 @@ func gitCommitCount() (int, error) {
 	if err != nil {
 		return 0, errors.New("cannot count commits (does HEAD exist?)")
 	}
-	n, err := strconv.Atoi(strings.TrimSpace(out))
+	n, err := strconv.Atoi(out)
 	if err != nil {
 		return 0, err
 	}

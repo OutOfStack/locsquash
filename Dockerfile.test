@@ -1,8 +1,8 @@
 # Dockerfile for running tests in isolated environment
 FROM golang:1.25-alpine3.22
 
-# Install git
-RUN apk add --no-cache git
+# Install git and build dependencies
+RUN apk add --no-cache git gcc musl-dev
 
 # Configure git for test commits
 RUN git config --global user.email "test@ci.local" \

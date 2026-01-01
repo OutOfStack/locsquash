@@ -5,6 +5,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -144,21 +145,9 @@ func (tr *testRepo) createCommitsWithMessages(messages ...string) {
 func (tr *testRepo) commitCount() int {
 	tr.t.Helper()
 	out := tr.git("rev-list", "--count", "HEAD")
-	var count int
-	if _, err := strings.NewReader(out).Read([]byte{}); err == nil {
-		// Parse the output
-		for _, c := range out {
-			if c >= '0' && c <= '9' {
-				count = count*10 + int(c-'0')
-			}
-		}
-	}
-	// Simple parsing
-	count = 0
-	for _, c := range out {
-		if c >= '0' && c <= '9' {
-			count = count*10 + int(c-'0')
-		}
+	count, err := strconv.Atoi(out)
+	if err != nil {
+		tr.t.Fatalf("failed to parse commit count from %q: %v", out, err)
 	}
 	return count
 }
