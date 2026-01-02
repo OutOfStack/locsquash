@@ -1,4 +1,4 @@
-package main
+package main_test
 
 import (
 	"os"
@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 )
 
 // TestCLI_SquashTwoCommits tests squashing 2 commits into 1
@@ -65,7 +64,7 @@ func TestCLI_CreatesBackupBranch(t *testing.T) {
 	tr.runCLISuccess("-n", "2", "-m", "squashed")
 
 	// Check for gosquash/backup-* branch
-	out := tr.git("branch", "-a")
+	out := tr.git(t.Context(), "branch", "-a")
 	if !strings.Contains(out, "gosquash/backup-") {
 		t.Errorf("expected backup branch to be created, branches: %s", out)
 	}
@@ -76,11 +75,11 @@ func TestCLI_DryRunNoChanges(t *testing.T) {
 	tr := newTestRepo(t)
 	tr.createCommitsWithMessages("first", "second", "third")
 
-	beforeHead := tr.git("rev-parse", "HEAD")
+	beforeHead := tr.git(t.Context(), "rev-parse", "HEAD")
 
 	out := tr.runCLISuccess("-n", "2", "-dry-run")
 
-	afterHead := tr.git("rev-parse", "HEAD")
+	afterHead := tr.git(t.Context(), "rev-parse", "HEAD")
 
 	if beforeHead != afterHead {
 		t.Errorf("dry-run modified HEAD: before=%s, after=%s", beforeHead, afterHead)
@@ -134,15 +133,11 @@ func TestCLI_FailsWithNZero(t *testing.T) {
 // TestCLI_FailsOutsideGitRepo tests that running outside a git repo fails
 func TestCLI_FailsOutsideGitRepo(t *testing.T) {
 	// Create temp dir without git init
-	dir, err := os.MkdirTemp("", "locsquash-nogit-")
-	if err != nil {
-		t.Fatalf("failed to create temp dir: %v", err)
-	}
-	defer os.RemoveAll(dir)
+	dir := t.TempDir()
 
 	binary := buildTestBinary(t)
 
-	cmd := exec.Command(binary, "-n", "2")
+	cmd := exec.CommandContext(t.Context(), binary, "-n", "2") //nolint:gosec
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 
@@ -174,7 +169,7 @@ func TestCLI_FailsWithUncommittedChanges(t *testing.T) {
 
 	// Create uncommitted change
 	tr.writeFile("dirty.txt", "uncommitted content")
-	tr.git("add", "dirty.txt")
+	tr.git(t.Context(), "add", "dirty.txt")
 
 	out := tr.runCLIFailure("-n", "2")
 
@@ -190,7 +185,7 @@ func TestCLI_StashFlagAllowsDirtyRepo(t *testing.T) {
 
 	// Create uncommitted change
 	tr.writeFile("dirty.txt", "uncommitted content")
-	tr.git("add", "dirty.txt")
+	tr.git(t.Context(), "add", "dirty.txt")
 
 	tr.runCLISuccess("-n", "2", "-m", "squashed", "-stash")
 
@@ -215,12 +210,12 @@ func TestCLI_PreservesRecentCommitDate(t *testing.T) {
 	tr.createCommitsWithMessages("old", "newer", "newest")
 
 	// Get date of HEAD before squash
-	dateBefore := tr.git("log", "-1", "--format=%cI")
+	dateBefore := tr.git(t.Context(), "log", "-1", "--format=%cI")
 
 	tr.runCLISuccess("-n", "2", "-m", "squashed")
 
 	// Get date of HEAD after squash
-	dateAfter := tr.git("log", "-1", "--format=%cI")
+	dateAfter := tr.git(t.Context(), "log", "-1", "--format=%cI")
 
 	if dateBefore != dateAfter {
 		t.Errorf("commit date changed: before=%s, after=%s", dateBefore, dateAfter)
@@ -232,12 +227,12 @@ func TestCLI_RecoveryFromBackup(t *testing.T) {
 	tr := newTestRepo(t)
 	tr.createCommitsWithMessages("a", "b", "c", "d")
 
-	headBefore := tr.git("rev-parse", "HEAD")
+	headBefore := tr.git(t.Context(), "rev-parse", "HEAD")
 
 	tr.runCLISuccess("-n", "2", "-m", "squashed")
 
 	// Find backup branch
-	branches := tr.git("branch", "-a")
+	branches := tr.git(t.Context(), "branch", "-a")
 	var backupBranch string
 	for _, line := range strings.Split(branches, "\n") {
 		line = strings.TrimSpace(line)
@@ -253,9 +248,9 @@ func TestCLI_RecoveryFromBackup(t *testing.T) {
 	}
 
 	// Recover
-	tr.git("reset", "--hard", backupBranch)
+	tr.git(t.Context(), "reset", "--hard", backupBranch)
 
-	headAfter := tr.git("rev-parse", "HEAD")
+	headAfter := tr.git(t.Context(), "rev-parse", "HEAD")
 	if headBefore != headAfter {
 		t.Errorf("recovery failed: before=%s, after=%s", headBefore, headAfter)
 	}
@@ -268,19 +263,71 @@ func TestCLI_MultipleSquashesCreateUniqueBackups(t *testing.T) {
 
 	tr.runCLISuccess("-n", "2", "-m", "first squash")
 
-	// Wait to ensure unique backup branch name (uses second precision)
-	time.Sleep(1100 * time.Millisecond)
-
 	// Need to create more commits for second squash
 	tr.createCommitsWithMessages("7", "8")
 
 	tr.runCLISuccess("-n", "2", "-m", "second squash")
 
 	// Count backup branches
-	branches := tr.git("branch", "-a")
+	branches := tr.git(t.Context(), "branch", "-a")
 	backupCount := strings.Count(branches, "gosquash/backup-")
 
 	if backupCount < 2 {
 		t.Errorf("expected at least 2 backup branches, found %d in:\n%s", backupCount, branches)
+	}
+}
+
+// TestCLI_EmptySquashFailsWithoutAllowEmpty ensures empty squashes fail by default
+func TestCLI_EmptySquashFailsWithoutAllowEmpty(t *testing.T) {
+	tr := newTestRepo(t)
+	tr.createCommitsWithMessages("base")
+
+	// Create two commits that net to no changes (add then remove the same file)
+	tempPath := filepath.Join(tr.Dir, "temp.txt")
+	if err := os.WriteFile(tempPath, []byte("temp"), 0600); err != nil {
+		t.Fatalf("failed to write temp file: %v", err)
+	}
+	tr.git(t.Context(), "add", "temp.txt")
+	tr.git(t.Context(), "commit", "-m", "add temp")
+
+	if err := os.Remove(tempPath); err != nil {
+		t.Fatalf("failed to remove temp file: %v", err)
+	}
+	tr.git(t.Context(), "add", "-A")
+	tr.git(t.Context(), "commit", "-m", "remove temp")
+
+	out := tr.runCLIFailure("-n", "2")
+	if !strings.Contains(out, "no net changes") {
+		t.Errorf("expected error about no net changes, got: %s", out)
+	}
+}
+
+// TestCLI_EmptySquashSucceedsWithAllowEmpty ensures empty squashes succeed with --allow-empty
+func TestCLI_EmptySquashSucceedsWithAllowEmpty(t *testing.T) {
+	tr := newTestRepo(t)
+	tr.createCommitsWithMessages("base")
+
+	// Create two commits that cancel out, then allow an empty squashed commit
+	tempPath := filepath.Join(tr.Dir, "temp.txt")
+	if err := os.WriteFile(tempPath, []byte("temp"), 0600); err != nil {
+		t.Fatalf("failed to write temp file: %v", err)
+	}
+	tr.git(t.Context(), "add", "temp.txt")
+	tr.git(t.Context(), "commit", "-m", "add temp")
+
+	if err := os.Remove(tempPath); err != nil {
+		t.Fatalf("failed to remove temp file: %v", err)
+	}
+	tr.git(t.Context(), "add", "-A")
+	tr.git(t.Context(), "commit", "-m", "remove temp")
+
+	tr.runCLISuccess("-n", "2", "-m", "squashed", "-allow-empty")
+
+	if count := tr.commitCount(); count != 2 {
+		t.Errorf("expected 2 commits after squash, got %d", count)
+	}
+	lastMsg := tr.lastCommitMessage()
+	if lastMsg != "squashed" {
+		t.Errorf("expected commit message 'squashed', got %q", lastMsg)
 	}
 }

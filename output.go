@@ -22,7 +22,11 @@ func (info SquashInfo) printDryRun() {
 	fmt.Printf("git reset --soft %s\n\n", info.ResetRef)
 
 	fmt.Printf("# Create squashed commit\n")
-	fmt.Printf("GIT_COMMITTER_DATE=%s git commit --date %s -m %q\n\n", info.RecentDate, info.RecentDate, info.CommitMessage)
+	allowEmptyFlag := ""
+	if info.AllowEmpty {
+		allowEmptyFlag = " --allow-empty"
+	}
+	fmt.Printf("GIT_COMMITTER_DATE=%s git commit --date %s%s -m %q\n\n", info.RecentDate, info.RecentDate, allowEmptyFlag, info.CommitMessage)
 
 	if info.Dirty && info.AllowStash {
 		fmt.Printf("# Restore working tree\n")

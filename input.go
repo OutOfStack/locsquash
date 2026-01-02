@@ -5,6 +5,7 @@ type UserInput struct {
 	SquashCount   int    // Number of recent commits to squash
 	NewMessage    string // Custom commit message
 	AllowStash    bool   // Auto-stash uncommitted changes before squashing
+	AllowEmpty    bool   // Allow empty commits if squashed changes cancel out
 	DryRun        bool   // Print planned commands without executing
 	PrintRecovery bool   // Print recovery instructions and exit
 }

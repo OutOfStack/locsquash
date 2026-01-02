@@ -31,6 +31,7 @@ locsquash -n <count> [options]
 
 - `-m <msg>` - Custom commit message for the squashed commit (defaults to the oldest commit's message)
 - `-stash` - Auto-stash uncommitted changes before squashing
+- `-allow-empty` - Allow creating an empty commit if squashed changes cancel out
 - `-dry-run` - Preview the git commands without executing them
 - `-print-recovery` - Print recovery commands and exit
 - `-v`, `-version` - Print version and exit
@@ -66,7 +67,7 @@ locsquash -n 3 --stash
 1. Creates a backup branch (`gosquash/backup-<timestamp>`) before any changes
 2. Optionally stashes uncommitted changes if `--stash` is provided
 3. Performs a soft reset to `HEAD~N`
-4. Creates a new commit with all changes, preserving the most recent commit's date
+4. Creates a new commit with all changes, preserving the most recent commit's date and using the oldest commit message (unless `-m` is provided)
 5. Restores stashed changes if applicable
 
 ## Development
@@ -77,6 +78,7 @@ make build VERSION=v1.0.0 # Build with specific version
 make run                  # Run without building
 make test                 # Run tests with race detector
 make test-docker          # Run tests in Docker
+make lint                 # Run linter
 ```
 
 ## Releasing
