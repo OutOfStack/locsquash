@@ -4,15 +4,15 @@ import "runtime/debug"
 
 // version is set at build time via ldflags:
 //
-//	go build -ldflags "-X main.version=v1.0.0"
+//	go build -ldflags "-X main.ldflagsVersion=v1.0.0"
 //
 // For `go install`, the version is automatically read from module info
 var version = getVersion()
 
 func getVersion() string {
 	// Check if version was set via ldflags (for release binaries)
-	if v := getLdflagsVersion(); v != "" {
-		return v
+	if ldflagsVersion != "" {
+		return ldflagsVersion
 	}
 
 	// Fall back to module version info (for go install)
@@ -25,7 +25,3 @@ func getVersion() string {
 
 // ldflagsVersion is set at build time via -ldflags "-X main.ldflagsVersion=v1.0.0"
 var ldflagsVersion string
-
-func getLdflagsVersion() string {
-	return ldflagsVersion
-}
