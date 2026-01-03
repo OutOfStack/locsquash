@@ -4,7 +4,7 @@ VERSION ?= dev
 
 build:
 	mkdir -p bin
-	go build -ldflags "-X main.version=$(VERSION)" -o bin/locsquash .
+	go build -ldflags "-X main.ldflagsVersion=$(VERSION)" -o bin/locsquash .
 
 run:
 	go run .

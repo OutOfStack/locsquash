@@ -25,19 +25,19 @@ jobs:
         VERSION=${{ github.ref_name }}
 
         # Linux amd64
-        GOOS=linux GOARCH=amd64 go build -ldflags "-X main.version=$VERSION" -o locsquash-linux-amd64
+        GOOS=linux GOARCH=amd64 go build -ldflags "-X main.ldflagsVersion=$VERSION" -o locsquash-linux-amd64
 
         # Linux arm64
-        GOOS=linux GOARCH=arm64 go build -ldflags "-X main.version=$VERSION" -o locsquash-linux-arm64
+        GOOS=linux GOARCH=arm64 go build -ldflags "-X main.ldflagsVersion=$VERSION" -o locsquash-linux-arm64
 
         # macOS amd64
-        GOOS=darwin GOARCH=amd64 go build -ldflags "-X main.version=$VERSION" -o locsquash-darwin-amd64
+        GOOS=darwin GOARCH=amd64 go build -ldflags "-X main.ldflagsVersion=$VERSION" -o locsquash-darwin-amd64
 
         # macOS arm64 (Apple Silicon)
-        GOOS=darwin GOARCH=arm64 go build -ldflags "-X main.version=$VERSION" -o locsquash-darwin-arm64
+        GOOS=darwin GOARCH=arm64 go build -ldflags "-X main.ldflagsVersion=$VERSION" -o locsquash-darwin-arm64
 
         # Windows amd64
-        GOOS=windows GOARCH=amd64 go build -ldflags "-X main.version=$VERSION" -o locsquash-windows-amd64.exe
+        GOOS=windows GOARCH=amd64 go build -ldflags "-X main.ldflagsVersion=$VERSION" -o locsquash-windows-amd64.exe
 
     - name: Create release
       uses: softprops/action-gh-release@v2
