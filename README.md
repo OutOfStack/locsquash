@@ -64,7 +64,7 @@ locsquash -n 3 --stash
 
 ## How It Works
 
-1. Creates a backup branch (`gosquash/backup-<timestamp>`) before any changes
+1. Creates a backup branch (`locsquash/backup-<timestamp>`) before any changes
 2. Optionally stashes uncommitted changes if `--stash` is provided
 3. Performs a soft reset to `HEAD~N`
 4. Creates a new commit with all changes, preserving the most recent commit's date and using the oldest commit message (unless `-m` is provided)
@@ -97,7 +97,7 @@ This triggers CI to build binaries for all platforms (Linux, macOS, Windows) and
 If something goes wrong, recover using the backup branch:
 
 ```bash
-git reset --hard gosquash/backup-<timestamp>
+git reset --hard locsquash/backup-<timestamp>
 ```
 
 To see recovery instructions before running:

@@ -14,7 +14,7 @@ func (info SquashInfo) printDryRun() {
 
 	if info.Dirty && info.AllowStash {
 		fmt.Printf("# Stash working tree\n")
-		fmt.Printf("git stash push -u -m \"gosquash auto-stash\"\n")
+		fmt.Printf("git stash push -u -m \"locsquash auto-stash\"\n")
 		fmt.Printf("# (stash ref will be: stash@{0})\n\n")
 	}
 

@@ -103,7 +103,7 @@ func (tr *testRepo) createCommit(message string) {
 	}
 	if _, err = f.WriteString(content); err != nil {
 		if cErr := f.Close(); cErr != nil {
-			tr.t.Fatalf("failed to close file after write error: %v", cErr)
+			tr.t.Logf("failed to close file: %v", cErr)
 		}
 		tr.t.Fatalf("failed to write file: %v", err)
 	}

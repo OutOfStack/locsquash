@@ -63,9 +63,9 @@ func TestCLI_CreatesBackupBranch(t *testing.T) {
 
 	tr.runCLISuccess("-n", "2", "-m", "squashed")
 
-	// Check for gosquash/backup-* branch
+	// Check for locsquash/backup-* branch
 	out := tr.git(t.Context(), "branch", "-a")
-	if !strings.Contains(out, "gosquash/backup-") {
+	if !strings.Contains(out, "locsquash/backup-") {
 		t.Errorf("expected backup branch to be created, branches: %s", out)
 	}
 }
@@ -236,7 +236,7 @@ func TestCLI_RecoveryFromBackup(t *testing.T) {
 	var backupBranch string
 	for _, line := range strings.Split(branches, "\n") {
 		line = strings.TrimSpace(line)
-		if strings.Contains(line, "gosquash/backup-") {
+		if strings.Contains(line, "locsquash/backup-") {
 			backupBranch = strings.TrimPrefix(line, "* ")
 			backupBranch = strings.TrimSpace(backupBranch)
 			break
@@ -270,10 +270,41 @@ func TestCLI_MultipleSquashesCreateUniqueBackups(t *testing.T) {
 
 	// Count backup branches
 	branches := tr.git(t.Context(), "branch", "-a")
-	backupCount := strings.Count(branches, "gosquash/backup-")
+	backupCount := strings.Count(branches, "locsquash/backup-")
 
 	if backupCount < 2 {
 		t.Errorf("expected at least 2 backup branches, found %d in:\n%s", backupCount, branches)
+	}
+}
+
+// TestCLI_BackupBranchCollision tests that backup branches get unique suffixes
+// when the base name already exists (tests branchExists using git show-ref).
+// This runs multiple squashes in rapid succession to force collision handling
+func TestCLI_BackupBranchCollision(t *testing.T) {
+	tr := newTestRepo(t)
+
+	// Create enough commits for 5 squashes (each squash needs 2+ commits, keeping 1)
+	tr.createCommitsWithMessages("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11")
+
+	// Run 5 squashes in rapid succession - within the same second,
+	// they should all try the same timestamp-based backup name and trigger collision handling
+	for range 5 {
+		tr.runCLISuccess("-n", "2", "-m", "squash")
+	}
+
+	// Verify multiple backup branches exist
+	branches := tr.git(t.Context(), "branch", "-a")
+	backupCount := strings.Count(branches, "locsquash/backup-")
+
+	if backupCount < 5 {
+		t.Errorf("expected at least 5 backup branches, found %d in:\n%s", backupCount, branches)
+	}
+
+	// If they ran within the same second, we should see suffixed branches (-2, -3, etc.)
+	// Check for at least one suffixed branch to verify collision handling works
+	hasSuffix := strings.Contains(branches, "-2") || strings.Contains(branches, "-3")
+	if !hasSuffix {
+		t.Logf("Note: no suffixed branches found - squashes may have run across different seconds")
 	}
 }
 

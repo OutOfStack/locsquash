@@ -33,29 +33,33 @@ func runGitCommand(ctx context.Context, args ...string) error {
 	return cmd.Run()
 }
 
+// branchExists checks if a branch with the given name exists.
+// Uses git show-ref which is locale-independent (avoids parsing error messages).
+func branchExists(ctx context.Context, name string) bool {
+	cmd := exec.CommandContext(ctx, "git", "show-ref", "--verify", "--quiet", "refs/heads/"+name) //nolint:gosec // name is controlled internally (timestamp-based backup name)
+	return cmd.Run() == nil
+}
+
 // createBackupBranch creates a branch from HEAD, retrying with a numeric suffix
 // if the base name already exists
 func createBackupBranch(ctx context.Context, baseName string) (string, error) {
-	for i := 0; ; i++ {
+	const maxAttempts = 10
+	for i := range maxAttempts {
 		name := baseName
 		if i > 0 {
-			name = fmt.Sprintf("%s-%d", baseName, i)
+			name = fmt.Sprintf("%s-%d", baseName, i+1)
 		}
 
-		if _, err := gitStdout(ctx, "branch", name, "HEAD"); err == nil {
-			return name, nil
-		} else if !isBranchExistsError(err) {
+		if branchExists(ctx, name) {
+			continue
+		}
+
+		if _, err := gitStdout(ctx, "branch", name, "HEAD"); err != nil {
 			return "", err
 		}
+		return name, nil
 	}
-}
-
-func isBranchExistsError(err error) bool {
-	if err == nil {
-		return false
-	}
-	msg := err.Error()
-	return strings.Contains(msg, "already exists") || strings.Contains(msg, "A branch named")
+	return "", fmt.Errorf("failed to create backup branch %s after %d attempts", baseName, maxAttempts)
 }
 
 // ensureInsideGitRepo checks if the current directory is inside a git repository
@@ -106,7 +110,7 @@ func gitHasChangesBetween(ctx context.Context, baseRef, headRef string) (bool, e
 
 // stashPushAndGetRef stashes uncommitted changes and returns the stash reference
 func stashPushAndGetRef(ctx context.Context) (string, error) {
-	msg := "gosquash auto-stash"
+	msg := "locsquash auto-stash"
 	if err := runGitCommand(ctx, "stash", "push", "-u", "-m", msg); err != nil {
 		return "", err
 	}

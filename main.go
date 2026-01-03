@@ -71,7 +71,7 @@ func main() {
 		if input.DryRun || input.PrintRecovery {
 			fmt.Fprintln(os.Stderr, "Warning: uncommitted changes detected. Preview may not reflect a clean working tree; use --stash to simulate a clean state.")
 		} else {
-			fatalf("Error: uncommitted changes detected. Commit/stash them or rerun with --stash / -st.")
+			fatalf("Error: uncommitted changes detected. Commit/stash them or rerun with --stash.")
 		}
 	}
 
@@ -94,7 +94,7 @@ func main() {
 	}
 	info.RecentDate = strings.TrimSpace(recentDate)
 
-	info.BackupName = "gosquash/backup-" + time.Now().UTC().Format("20060102-150405")
+	info.BackupName = "locsquash/backup-" + time.Now().UTC().Format("20060102-150405")
 	info.ResetRef = fmt.Sprintf("HEAD~%d", info.SquashCount)
 
 	hasChanges, err := gitHasChangesBetween(ctx, info.ResetRef, "HEAD")
