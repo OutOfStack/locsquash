@@ -8,14 +8,23 @@ type UserInput struct {
 	AllowEmpty    bool   // Allow empty commits if squashed changes cancel out
 	DryRun        bool   // Print planned commands without executing
 	PrintRecovery bool   // Print recovery instructions and exit
+	NoBackup      bool   // Skip creating backup branch
+	Yes           bool   // Skip confirmation prompt
+}
+
+// CommitInfo holds information about a single commit
+type CommitInfo struct {
+	Hash    string // Short commit hash
+	Subject string // First line of commit message
 }
 
 // SquashInfo extends UserInput with computed values relevant to the squash operation
 type SquashInfo struct {
 	UserInput
-	BackupName    string // Name of the backup branch created before squashing
-	RecentDate    string // ISO date of the most recent commit
-	ResetRef      string // Git ref to reset to (HEAD~N)
-	CommitMessage string // Final commit message for the squashed commit
-	Dirty         bool   // Whether working directory has uncommitted changes
+	BackupName    string       // Name of the backup branch created before squashing
+	RecentDate    string       // ISO date of the most recent commit
+	ResetRef      string       // Git ref to reset to (HEAD~N)
+	CommitMessage string       // Final commit message for the squashed commit
+	Dirty         bool         // Whether working directory has uncommitted changes
+	Commits       []CommitInfo // List of commits that will be squashed
 }
