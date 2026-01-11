@@ -138,6 +138,28 @@ func gitLogSingle(ctx context.Context, ref, formatStr string) (string, error) {
 	return gitStdout(ctx, "log", "-1", "--format="+formatStr, ref)
 }
 
+// gitLogCommits retrieves the list of commits that will be squashed
+func gitLogCommits(ctx context.Context, count int) ([]CommitInfo, error) {
+	// Format: short hash + tab + subject
+	// Use --first-parent to match HEAD~N traversal used by git reset
+	out, err := gitStdout(ctx, "log", "--first-parent", "-"+strconv.Itoa(count), "--format=%h\t%s", "HEAD")
+	if err != nil {
+		return nil, err
+	}
+	lines := strings.Split(out, "\n")
+	commits := make([]CommitInfo, 0, len(lines))
+	for _, line := range lines {
+		if line == "" {
+			continue
+		}
+		parts := strings.SplitN(line, "\t", 2)
+		if len(parts) == 2 {
+			commits = append(commits, CommitInfo{Hash: parts[0], Subject: parts[1]})
+		}
+	}
+	return commits, nil
+}
+
 // gitCommitWithDates creates a commit with specific author and committer dates
 func gitCommitWithDates(ctx context.Context, isoDate, message string, allowEmpty bool) error {
 	args := []string{"commit", "--date", isoDate}

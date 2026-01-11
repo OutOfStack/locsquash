@@ -30,6 +30,8 @@ locsquash -n <count> [options]
 ### Options
 
 - `-m <msg>` - Custom commit message for the squashed commit (defaults to the oldest commit's message)
+- `-y`, `-yes` - Skip confirmation prompt (useful for scripting)
+- `-no-backup` - Skip creating backup branch
 - `-stash` - Auto-stash uncommitted changes before squashing
 - `-allow-empty` - Allow creating an empty commit if squashed changes cancel out
 - `-dry-run` - Preview the git commands without executing them
@@ -38,7 +40,7 @@ locsquash -n <count> [options]
 
 ## Examples
 
-Squash the last 3 commits:
+Squash the last 3 commits (will show commits and ask for confirmation):
 
 ```bash
 locsquash -n 3
@@ -50,25 +52,38 @@ Squash the last 5 commits with a custom message:
 locsquash -n 5 -m "feat: consolidated feature implementation"
 ```
 
+Squash without confirmation prompt (for scripting):
+
+```bash
+locsquash -n 3 -y
+```
+
+Squash without creating a backup branch:
+
+```bash
+locsquash -n 3 -y -no-backup
+```
+
 Preview what would happen without making changes:
 
 ```bash
-locsquash -n 3 --dry-run
+locsquash -n 3 -dry-run
 ```
 
 Squash with uncommitted changes (auto-stash):
 
 ```bash
-locsquash -n 3 --stash
+locsquash -n 3 -stash
 ```
 
 ## How It Works
 
-1. Creates a backup branch (`locsquash/backup-<timestamp>`) before any changes
-2. Optionally stashes uncommitted changes if `--stash` is provided
-3. Performs a soft reset to `HEAD~N`
-4. Creates a new commit with all changes, preserving the most recent commit's date and using the oldest commit message (unless `-m` is provided)
-5. Restores stashed changes if applicable
+1. Shows the commits that will be squashed and asks for confirmation (skip with `-y`)
+2. Creates a backup branch (`locsquash/backup-<timestamp>`) before any changes (skip with `-no-backup`)
+3. Optionally stashes uncommitted changes if `-stash` is provided
+4. Performs a soft reset to `HEAD~N`
+5. Creates a new commit with all changes, preserving the most recent commit's date and using the oldest commit message (unless `-m` is provided)
+6. Restores stashed changes if applicable
 
 ## Development
 
@@ -103,5 +118,12 @@ git reset --hard locsquash/backup-<timestamp>
 To see recovery instructions before running:
 
 ```bash
-locsquash -n 3 --print-recovery
+locsquash -n 3 -print-recovery
+```
+
+If you used `-no-backup`, recovery is only possible via git reflog:
+
+```bash
+git reflog
+git reset --hard <commit-hash-before-squash>
 ```

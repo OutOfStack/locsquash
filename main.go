@@ -26,6 +26,9 @@ func main() {
 	flag.BoolVar(&input.AllowEmpty, "allow-empty", false, "Allow creating an empty commit if squashed changes cancel out")
 	flag.BoolVar(&input.DryRun, "dry-run", false, "Print the git commands that would run, without making changes")
 	flag.BoolVar(&input.PrintRecovery, "print-recovery", false, "Print recovery commands and exit")
+	flag.BoolVar(&input.NoBackup, "no-backup", false, "Skip creating backup branch")
+	flag.BoolVar(&input.Yes, "yes", false, "Skip confirmation prompt")
+	flag.BoolVar(&input.Yes, "y", false, "Skip confirmation prompt (shorthand)")
 	flag.BoolVar(&showVersion, "version", false, "Print version and exit")
 	flag.BoolVar(&showVersion, "v", false, "Print version and exit (shorthand)")
 
@@ -56,8 +59,11 @@ func main() {
 	if err != nil {
 		fatalf("Error retrieving commit count: %v", err)
 	}
+	if totalCommits < 2 {
+		fatalf("Error: repository only has %d commit; need at least 2 commits to squash.", totalCommits)
+	}
 	if input.SquashCount >= totalCommits {
-		fatalf("Error: repository has %d commits; -n must be at most %d (you can't squash the entire history).", totalCommits, totalCommits-1)
+		fatalf("Error: repository has %d commits; -n must be at most %d (one commit must remain as the base).", totalCommits, totalCommits-1)
 	}
 
 	info := SquashInfo{UserInput: input}
@@ -69,9 +75,9 @@ func main() {
 	}
 	if info.Dirty && !input.AllowStash {
 		if input.DryRun || input.PrintRecovery {
-			fmt.Fprintln(os.Stderr, "Warning: uncommitted changes detected. Preview may not reflect a clean working tree; use --stash to simulate a clean state.")
+			fmt.Fprintln(os.Stderr, colorizeErr(colorYellow, "Warning: uncommitted changes detected. Preview may not reflect a clean working tree; use -stash to simulate a clean state."))
 		} else {
-			fatalf("Error: uncommitted changes detected. Commit/stash them or rerun with --stash.")
+			fatalf("Error: uncommitted changes detected. Commit/stash them or rerun with -stash.")
 		}
 	}
 
@@ -102,7 +108,13 @@ func main() {
 		fatalf("Error checking commit diff: %v", err)
 	}
 	if !hasChanges && !info.AllowEmpty {
-		fatalf("Error: selected commits result in no net changes. Use --allow-empty to create an empty commit.")
+		fatalf("Error: selected commits result in no net changes. Use -allow-empty to create an empty commit.")
+	}
+
+	// Retrieve commit list for preview
+	info.Commits, err = gitLogCommits(ctx, info.SquashCount)
+	if err != nil {
+		fatalf("Error retrieving commit list: %v", err)
 	}
 
 	if info.DryRun {
@@ -117,6 +129,15 @@ func main() {
 		return
 	}
 
+	// Show commits and prompt for confirmation (unless -yes)
+	if !info.Yes {
+		info.printCommitList()
+		if !promptConfirm() {
+			fmt.Println("Aborted.")
+			os.Exit(0)
+		}
+	}
+
 	// Stash if needed
 	stashedRef := ""
 	if info.Dirty && info.AllowStash {
@@ -125,44 +146,84 @@ func main() {
 			fatalf("Failed to stash changes: %v", sErr)
 		}
 		stashedRef = ref
-		fmt.Printf("Stashed working directory changes as %s\n", stashedRef)
+		fmt.Printf("Stashed working directory changes as %s\n", colorize(colorCyan, stashedRef))
 	}
 
-	// Create recovery branch before rewriting history
-	createdName, err := createBackupBranch(ctx, info.BackupName)
-	if err != nil {
-		fatalf("Failed to create backup branch %q: %v", info.BackupName, err)
+	// Create recovery branch before rewriting history (unless -no-backup)
+	if !info.NoBackup {
+		createdName, cErr := createBackupBranch(ctx, info.BackupName)
+		if cErr != nil {
+			fatalf("Failed to create backup branch %q: %v", info.BackupName, cErr)
+		}
+		info.BackupName = createdName
+		fmt.Printf("Created backup branch: %s (recovery point)\n", colorize(colorGreen, info.BackupName))
+	} else {
+		info.BackupName = "" // Clear so recoveryHint knows no backup exists
 	}
-	info.BackupName = createdName
-	fmt.Printf("Created backup branch: %s (recovery point)\n", info.BackupName)
 
 	// Soft reset to HEAD~N
 	fmt.Printf("Performing soft reset to %s...\n", info.ResetRef)
 	if err = runGitCommand(ctx, "reset", "--soft", info.ResetRef); err != nil {
-		fatalf("Failed to perform soft reset: %v\nRecovery: git reset --hard %s", err, info.BackupName)
+		fatalf("Failed to perform soft reset: %v%s", err, recoveryHint(info.BackupName))
 	}
 
 	// Commit staged changes as one, with date = most recent commit date
 	fmt.Println("Creating squashed commit...")
 	if err = gitCommitWithDates(ctx, info.RecentDate, info.CommitMessage, info.AllowEmpty); err != nil {
-		fatalf("Failed to create squashed commit: %v\nRecovery: git reset --hard %s", err, info.BackupName)
+		fatalf("Failed to create squashed commit: %v%s", err, recoveryHint(info.BackupName))
 	}
 
 	// Reapply stash if we created one: apply first, then drop only if success
 	if stashedRef != "" {
 		fmt.Printf("Reapplying stashed changes from %s...\n", stashedRef)
 		if err = runGitCommand(ctx, "stash", "apply", stashedRef); err != nil {
-			fatalf("Stash apply failed (stash preserved as %s): %v\nRecovery: git reset --hard %s", stashedRef, err, info.BackupName)
+			fatalf("Stash apply failed (stash preserved as %s): %v%s", stashedRef, err, recoveryHint(info.BackupName))
 		}
 		if err = runGitCommand(ctx, "stash", "drop", stashedRef); err != nil {
-			fatalf("Applied stash but failed to drop %s: %v\nYou can drop it manually later.\nRecovery: git reset --hard %s", stashedRef, err, info.BackupName)
+			fatalf("Applied stash but failed to drop %s: %v\nYou can drop it manually later.%s", stashedRef, err, recoveryHint(info.BackupName))
 		}
 	}
 
-	fmt.Printf("Successfully squashed the last %d commits.\nBackup branch (optional): %s\n", info.SquashCount, info.BackupName)
+	fmt.Println(colorize(colorGreen, fmt.Sprintf("Successfully squashed the last %d commits.", info.SquashCount)))
+	if !info.NoBackup {
+		fmt.Printf("Backup branch: %s\n", colorize(colorCyan, info.BackupName))
+	}
 }
 
 func fatalf(format string, args ...any) {
-	fmt.Fprintf(os.Stderr, format+"\n", args...)
+	msg := fmt.Sprintf(format, args...)
+	fmt.Fprintln(os.Stderr, colorizeErr(colorRed, msg))
 	os.Exit(1)
+}
+
+// recoveryHint returns a recovery message based on whether backup branch exists
+func recoveryHint(backupName string) string {
+	if backupName == "" {
+		return "\nRecovery: use 'git reflog' to find the commit hash before the squash, then 'git reset --hard <hash>'"
+	}
+	return "\nRecovery: git reset --hard " + backupName
+}
+
+// isTerminal checks if stdin is connected to a terminal
+func isTerminal() bool {
+	fi, err := os.Stdin.Stat()
+	if err != nil {
+		return false
+	}
+	return fi.Mode()&os.ModeCharDevice != 0
+}
+
+// promptConfirm asks the user for confirmation and returns true if they confirm.
+// If stdin is not a terminal (e.g., piped input), it aborts with an error
+func promptConfirm() bool {
+	if !isTerminal() {
+		fatalf("Error: stdin is not a terminal. Use -y to skip confirmation in non-interactive mode.")
+	}
+	fmt.Print("Proceed? [y/N] ")
+	var response string
+	if _, err := fmt.Scanln(&response); err != nil {
+		return false
+	}
+	response = strings.ToLower(strings.TrimSpace(response))
+	return response == "y" || response == "yes"
 }

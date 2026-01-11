@@ -18,7 +18,7 @@ func TestCLI_SquashTwoCommits(t *testing.T) {
 		t.Fatalf("expected 3 commits, got %d", initialCount)
 	}
 
-	tr.runCLISuccess("-n", "2", "-m", "squashed commit")
+	tr.runCLISuccess("-n", "2", "-m", "squashed commit", "-yes")
 
 	finalCount := tr.commitCount()
 	if finalCount != 2 {
@@ -36,7 +36,7 @@ func TestCLI_SquashThreeCommits(t *testing.T) {
 	tr := newTestRepo(t)
 	tr.createCommitsWithMessages("one", "two", "three", "four")
 
-	tr.runCLISuccess("-n", "3", "-m", "combined")
+	tr.runCLISuccess("-n", "3", "-m", "combined", "-yes")
 
 	if count := tr.commitCount(); count != 2 {
 		t.Errorf("expected 2 commits after squashing 3, got %d", count)
@@ -48,7 +48,7 @@ func TestCLI_UsesOldestMessageByDefault(t *testing.T) {
 	tr := newTestRepo(t)
 	tr.createCommitsWithMessages("base", "oldest of squash", "middle", "newest")
 
-	tr.runCLISuccess("-n", "3") // Squash last 3: oldest of squash, middle, newest
+	tr.runCLISuccess("-n", "3", "-yes") // Squash last 3: oldest of squash, middle, newest
 
 	lastMsg := tr.lastCommitMessage()
 	if lastMsg != "oldest of squash" {
@@ -61,7 +61,7 @@ func TestCLI_CreatesBackupBranch(t *testing.T) {
 	tr := newTestRepo(t)
 	tr.createCommitsWithMessages("a", "b", "c")
 
-	tr.runCLISuccess("-n", "2", "-m", "squashed")
+	tr.runCLISuccess("-n", "2", "-m", "squashed", "-yes")
 
 	// Check for locsquash/backup-* branch
 	out := tr.git(t.Context(), "branch", "-a")
@@ -157,8 +157,20 @@ func TestCLI_FailsWhenSquashingEntireHistory(t *testing.T) {
 
 	out := tr.runCLIFailure("-n", "2") // Can't squash both commits
 
-	if !strings.Contains(out, "can't squash the entire history") {
-		t.Errorf("expected error about entire history, got: %s", out)
+	if !strings.Contains(out, "one commit must remain as the base") {
+		t.Errorf("expected error about base commit, got: %s", out)
+	}
+}
+
+// TestCLI_FailsWithSingleCommitRepo tests that repos with only one commit get a clear error
+func TestCLI_FailsWithSingleCommitRepo(t *testing.T) {
+	tr := newTestRepo(t)
+	tr.createCommitsWithMessages("only-commit")
+
+	out := tr.runCLIFailure("-n", "2")
+
+	if !strings.Contains(out, "need at least 2 commits") {
+		t.Errorf("expected error about needing 2 commits, got: %s", out)
 	}
 }
 
@@ -187,7 +199,7 @@ func TestCLI_StashFlagAllowsDirtyRepo(t *testing.T) {
 	tr.writeFile("dirty.txt", "uncommitted content")
 	tr.git(t.Context(), "add", "dirty.txt")
 
-	tr.runCLISuccess("-n", "2", "-m", "squashed", "-stash")
+	tr.runCLISuccess("-n", "2", "-m", "squashed", "-stash", "-yes")
 
 	// Verify squash happened
 	if count := tr.commitCount(); count != 2 {
@@ -212,7 +224,7 @@ func TestCLI_PreservesRecentCommitDate(t *testing.T) {
 	// Get date of HEAD before squash
 	dateBefore := tr.git(t.Context(), "log", "-1", "--format=%cI")
 
-	tr.runCLISuccess("-n", "2", "-m", "squashed")
+	tr.runCLISuccess("-n", "2", "-m", "squashed", "-yes")
 
 	// Get date of HEAD after squash
 	dateAfter := tr.git(t.Context(), "log", "-1", "--format=%cI")
@@ -229,7 +241,7 @@ func TestCLI_RecoveryFromBackup(t *testing.T) {
 
 	headBefore := tr.git(t.Context(), "rev-parse", "HEAD")
 
-	tr.runCLISuccess("-n", "2", "-m", "squashed")
+	tr.runCLISuccess("-n", "2", "-m", "squashed", "-yes")
 
 	// Find backup branch
 	branches := tr.git(t.Context(), "branch", "-a")
@@ -261,12 +273,12 @@ func TestCLI_MultipleSquashesCreateUniqueBackups(t *testing.T) {
 	tr := newTestRepo(t)
 	tr.createCommitsWithMessages("1", "2", "3", "4", "5", "6")
 
-	tr.runCLISuccess("-n", "2", "-m", "first squash")
+	tr.runCLISuccess("-n", "2", "-m", "first squash", "-yes")
 
 	// Need to create more commits for second squash
 	tr.createCommitsWithMessages("7", "8")
 
-	tr.runCLISuccess("-n", "2", "-m", "second squash")
+	tr.runCLISuccess("-n", "2", "-m", "second squash", "-yes")
 
 	// Count backup branches
 	branches := tr.git(t.Context(), "branch", "-a")
@@ -289,7 +301,7 @@ func TestCLI_BackupBranchCollision(t *testing.T) {
 	// Run 5 squashes in rapid succession - within the same second,
 	// they should all try the same timestamp-based backup name and trigger collision handling
 	for range 5 {
-		tr.runCLISuccess("-n", "2", "-m", "squash")
+		tr.runCLISuccess("-n", "2", "-m", "squash", "-yes")
 	}
 
 	// Verify multiple backup branches exist
@@ -333,7 +345,7 @@ func TestCLI_EmptySquashFailsWithoutAllowEmpty(t *testing.T) {
 	}
 }
 
-// TestCLI_EmptySquashSucceedsWithAllowEmpty ensures empty squashes succeed with --allow-empty
+// TestCLI_EmptySquashSucceedsWithAllowEmpty ensures empty squashes succeed with -allow-empty
 func TestCLI_EmptySquashSucceedsWithAllowEmpty(t *testing.T) {
 	tr := newTestRepo(t)
 	tr.createCommitsWithMessages("base")
@@ -352,7 +364,7 @@ func TestCLI_EmptySquashSucceedsWithAllowEmpty(t *testing.T) {
 	tr.git(t.Context(), "add", "-A")
 	tr.git(t.Context(), "commit", "-m", "remove temp")
 
-	tr.runCLISuccess("-n", "2", "-m", "squashed", "-allow-empty")
+	tr.runCLISuccess("-n", "2", "-m", "squashed", "-allow-empty", "-yes")
 
 	if count := tr.commitCount(); count != 2 {
 		t.Errorf("expected 2 commits after squash, got %d", count)
@@ -360,5 +372,94 @@ func TestCLI_EmptySquashSucceedsWithAllowEmpty(t *testing.T) {
 	lastMsg := tr.lastCommitMessage()
 	if lastMsg != "squashed" {
 		t.Errorf("expected commit message 'squashed', got %q", lastMsg)
+	}
+}
+
+// TestCLI_NoBackupSkipsBackupBranch tests that -no-backup skips creating backup branch
+func TestCLI_NoBackupSkipsBackupBranch(t *testing.T) {
+	tr := newTestRepo(t)
+	tr.createCommitsWithMessages("a", "b", "c")
+
+	tr.runCLISuccess("-n", "2", "-m", "squashed", "-yes", "-no-backup")
+
+	// Verify squash happened
+	if count := tr.commitCount(); count != 2 {
+		t.Errorf("expected 2 commits after squash, got %d", count)
+	}
+
+	// Verify no backup branch was created
+	branches := tr.git(t.Context(), "branch", "-a")
+	if strings.Contains(branches, "locsquash/backup-") {
+		t.Errorf("expected no backup branch with -no-backup, but found one in: %s", branches)
+	}
+}
+
+// TestCLI_NoBackupCannotRecoverViaBackup tests that with -no-backup, there's no backup branch to recover from
+func TestCLI_NoBackupCannotRecoverViaBackup(t *testing.T) {
+	tr := newTestRepo(t)
+	tr.createCommitsWithMessages("a", "b", "c", "d")
+
+	headBefore := tr.git(t.Context(), "rev-parse", "HEAD")
+
+	tr.runCLISuccess("-n", "2", "-m", "squashed", "-yes", "-no-backup")
+
+	headAfter := tr.git(t.Context(), "rev-parse", "HEAD")
+	if headBefore == headAfter {
+		t.Fatal("HEAD should have changed after squash")
+	}
+
+	// Verify no backup branch exists - recovery via backup is not possible
+	branches := tr.git(t.Context(), "branch", "-a")
+	if strings.Contains(branches, "locsquash/backup-") {
+		t.Errorf("backup branch should not exist with -no-backup")
+	}
+
+	// Recovery would only be possible via reflog (not tested here as it's git internal behavior)
+	// Verify we can still recover via reflog
+	reflog := tr.git(t.Context(), "reflog", "show", "--format=%H", "-n", "5")
+	if !strings.Contains(reflog, headBefore) {
+		t.Errorf("original HEAD %s should still be in reflog for recovery", headBefore)
+	}
+}
+
+// TestCLI_YesShorthandWorks tests that -y works as shorthand for -yes
+func TestCLI_YesShorthandWorks(t *testing.T) {
+	tr := newTestRepo(t)
+	tr.createCommitsWithMessages("a", "b", "c")
+
+	tr.runCLISuccess("-n", "2", "-m", "squashed", "-y")
+
+	if count := tr.commitCount(); count != 2 {
+		t.Errorf("expected 2 commits after squash, got %d", count)
+	}
+}
+
+// TestCLI_DryRunShowsCommitList tests that dry-run displays the commits to be squashed
+func TestCLI_DryRunShowsCommitList(t *testing.T) {
+	tr := newTestRepo(t)
+	tr.createCommitsWithMessages("first commit", "second commit", "third commit")
+
+	out := tr.runCLISuccess("-n", "2", "-dry-run")
+
+	// Should show commit list
+	if !strings.Contains(out, "commits will be squashed") {
+		t.Errorf("expected commit list in dry-run output, got: %s", out)
+	}
+
+	// Should show commit messages
+	if !strings.Contains(out, "second commit") || !strings.Contains(out, "third commit") {
+		t.Errorf("expected commit messages in dry-run output, got: %s", out)
+	}
+}
+
+// TestCLI_PrintRecoveryWithNoBackup tests that print-recovery shows warning when -no-backup is used
+func TestCLI_PrintRecoveryWithNoBackup(t *testing.T) {
+	tr := newTestRepo(t)
+	tr.createCommitsWithMessages("a", "b", "c")
+
+	out := tr.runCLISuccess("-n", "2", "-print-recovery", "-no-backup")
+
+	if !strings.Contains(out, "WARNING") || !strings.Contains(out, "reflog") {
+		t.Errorf("expected reflog warning in recovery output with -no-backup, got: %s", out)
 	}
 }
