@@ -75,9 +75,9 @@ func main() {
 	}
 	if info.Dirty && !input.AllowStash {
 		if input.DryRun || input.PrintRecovery {
-			fmt.Fprintln(os.Stderr, "Warning: uncommitted changes detected. Preview may not reflect a clean working tree; use --stash to simulate a clean state.")
+			fmt.Fprintln(os.Stderr, colorizeErr(colorYellow, "Warning: uncommitted changes detected. Preview may not reflect a clean working tree; use -stash to simulate a clean state."))
 		} else {
-			fatalf("Error: uncommitted changes detected. Commit/stash them or rerun with --stash.")
+			fatalf("Error: uncommitted changes detected. Commit/stash them or rerun with -stash.")
 		}
 	}
 
@@ -108,7 +108,7 @@ func main() {
 		fatalf("Error checking commit diff: %v", err)
 	}
 	if !hasChanges && !info.AllowEmpty {
-		fatalf("Error: selected commits result in no net changes. Use --allow-empty to create an empty commit.")
+		fatalf("Error: selected commits result in no net changes. Use -allow-empty to create an empty commit.")
 	}
 
 	// Retrieve commit list for preview
@@ -129,7 +129,7 @@ func main() {
 		return
 	}
 
-	// Show commits and prompt for confirmation (unless --yes)
+	// Show commits and prompt for confirmation (unless -yes)
 	if !info.Yes {
 		info.printCommitList()
 		if !promptConfirm() {
@@ -146,17 +146,17 @@ func main() {
 			fatalf("Failed to stash changes: %v", sErr)
 		}
 		stashedRef = ref
-		fmt.Printf("Stashed working directory changes as %s\n", stashedRef)
+		fmt.Printf("Stashed working directory changes as %s\n", colorize(colorCyan, stashedRef))
 	}
 
-	// Create recovery branch before rewriting history (unless --no-backup)
+	// Create recovery branch before rewriting history (unless -no-backup)
 	if !info.NoBackup {
 		createdName, cErr := createBackupBranch(ctx, info.BackupName)
 		if cErr != nil {
 			fatalf("Failed to create backup branch %q: %v", info.BackupName, cErr)
 		}
 		info.BackupName = createdName
-		fmt.Printf("Created backup branch: %s (recovery point)\n", info.BackupName)
+		fmt.Printf("Created backup branch: %s (recovery point)\n", colorize(colorGreen, info.BackupName))
 	} else {
 		info.BackupName = "" // Clear so recoveryHint knows no backup exists
 	}
@@ -184,14 +184,15 @@ func main() {
 		}
 	}
 
-	fmt.Printf("Successfully squashed the last %d commits.\n", info.SquashCount)
+	fmt.Println(colorize(colorGreen, fmt.Sprintf("Successfully squashed the last %d commits.", info.SquashCount)))
 	if !info.NoBackup {
-		fmt.Printf("Backup branch: %s\n", info.BackupName)
+		fmt.Printf("Backup branch: %s\n", colorize(colorCyan, info.BackupName))
 	}
 }
 
 func fatalf(format string, args ...any) {
-	fmt.Fprintf(os.Stderr, format+"\n", args...)
+	msg := fmt.Sprintf(format, args...)
+	fmt.Fprintln(os.Stderr, colorizeErr(colorRed, msg))
 	os.Exit(1)
 }
 
@@ -213,7 +214,7 @@ func isTerminal() bool {
 }
 
 // promptConfirm asks the user for confirmation and returns true if they confirm.
-// If stdin is not a terminal (e.g., piped input), it aborts with an error.
+// If stdin is not a terminal (e.g., piped input), it aborts with an error
 func promptConfirm() bool {
 	if !isTerminal() {
 		fatalf("Error: stdin is not a terminal. Use -y to skip confirmation in non-interactive mode.")

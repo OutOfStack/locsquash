@@ -1,12 +1,58 @@
 package main
 
-import "fmt"
+import (
+	"fmt"
+	"os"
+)
+
+// ANSI color codes
+const (
+	colorReset  = "\033[0m"
+	colorRed    = "\033[31m"
+	colorGreen  = "\033[32m"
+	colorYellow = "\033[33m"
+	colorCyan   = "\033[36m"
+)
+
+// stdoutIsTerminal checks if stdout is connected to a terminal
+func stdoutIsTerminal() bool {
+	fi, err := os.Stdout.Stat()
+	if err != nil {
+		return false
+	}
+	return fi.Mode()&os.ModeCharDevice != 0
+}
+
+// stderrIsTerminal checks if stderr is connected to a terminal
+func stderrIsTerminal() bool {
+	fi, err := os.Stderr.Stat()
+	if err != nil {
+		return false
+	}
+	return fi.Mode()&os.ModeCharDevice != 0
+}
+
+// colorize wraps text with ANSI color codes if stdout is a terminal
+func colorize(color, text string) string {
+	if !stdoutIsTerminal() {
+		return text
+	}
+	return color + text + colorReset
+}
+
+// colorizeErr wraps text with ANSI color codes if stderr is a terminal
+func colorizeErr(color, text string) string {
+	if !stderrIsTerminal() {
+		return text
+	}
+	return color + text + colorReset
+}
 
 // printCommitList displays the commits that will be squashed
 func (info SquashInfo) printCommitList() {
 	fmt.Printf("The following %d commits will be squashed:\n\n", len(info.Commits))
 	for _, c := range info.Commits {
-		fmt.Printf("  %s %s\n", c.Hash, c.Subject)
+		fmt.Printf("  %s %s\n", colorize(colorYellow, c.Hash), c.Subject)
 	}
 	fmt.Println()
 	fmt.Printf("Result commit message: %q\n\n", info.CommitMessage)
@@ -59,7 +105,7 @@ func (info SquashInfo) printRecovery() {
 	fmt.Println()
 
 	if info.NoBackup {
-		fmt.Println("# WARNING: --no-backup was specified, no backup branch will be created")
+		fmt.Println("# WARNING: -no-backup was specified, no backup branch will be created")
 		fmt.Println("# Recovery will only be possible via git reflog")
 		fmt.Println("# git reflog")
 		fmt.Println("# git reset --hard <commit-hash-before-squash>")

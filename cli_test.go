@@ -345,7 +345,7 @@ func TestCLI_EmptySquashFailsWithoutAllowEmpty(t *testing.T) {
 	}
 }
 
-// TestCLI_EmptySquashSucceedsWithAllowEmpty ensures empty squashes succeed with --allow-empty
+// TestCLI_EmptySquashSucceedsWithAllowEmpty ensures empty squashes succeed with -allow-empty
 func TestCLI_EmptySquashSucceedsWithAllowEmpty(t *testing.T) {
 	tr := newTestRepo(t)
 	tr.createCommitsWithMessages("base")
@@ -375,7 +375,7 @@ func TestCLI_EmptySquashSucceedsWithAllowEmpty(t *testing.T) {
 	}
 }
 
-// TestCLI_NoBackupSkipsBackupBranch tests that --no-backup skips creating backup branch
+// TestCLI_NoBackupSkipsBackupBranch tests that -no-backup skips creating backup branch
 func TestCLI_NoBackupSkipsBackupBranch(t *testing.T) {
 	tr := newTestRepo(t)
 	tr.createCommitsWithMessages("a", "b", "c")
@@ -390,11 +390,11 @@ func TestCLI_NoBackupSkipsBackupBranch(t *testing.T) {
 	// Verify no backup branch was created
 	branches := tr.git(t.Context(), "branch", "-a")
 	if strings.Contains(branches, "locsquash/backup-") {
-		t.Errorf("expected no backup branch with --no-backup, but found one in: %s", branches)
+		t.Errorf("expected no backup branch with -no-backup, but found one in: %s", branches)
 	}
 }
 
-// TestCLI_NoBackupCannotRecoverViaBackup tests that with --no-backup, there's no backup branch to recover from
+// TestCLI_NoBackupCannotRecoverViaBackup tests that with -no-backup, there's no backup branch to recover from
 func TestCLI_NoBackupCannotRecoverViaBackup(t *testing.T) {
 	tr := newTestRepo(t)
 	tr.createCommitsWithMessages("a", "b", "c", "d")
@@ -411,7 +411,7 @@ func TestCLI_NoBackupCannotRecoverViaBackup(t *testing.T) {
 	// Verify no backup branch exists - recovery via backup is not possible
 	branches := tr.git(t.Context(), "branch", "-a")
 	if strings.Contains(branches, "locsquash/backup-") {
-		t.Errorf("backup branch should not exist with --no-backup")
+		t.Errorf("backup branch should not exist with -no-backup")
 	}
 
 	// Recovery would only be possible via reflog (not tested here as it's git internal behavior)
@@ -452,7 +452,7 @@ func TestCLI_DryRunShowsCommitList(t *testing.T) {
 	}
 }
 
-// TestCLI_PrintRecoveryWithNoBackup tests that print-recovery shows warning when --no-backup is used
+// TestCLI_PrintRecoveryWithNoBackup tests that print-recovery shows warning when -no-backup is used
 func TestCLI_PrintRecoveryWithNoBackup(t *testing.T) {
 	tr := newTestRepo(t)
 	tr.createCommitsWithMessages("a", "b", "c")
@@ -460,6 +460,6 @@ func TestCLI_PrintRecoveryWithNoBackup(t *testing.T) {
 	out := tr.runCLISuccess("-n", "2", "-print-recovery", "-no-backup")
 
 	if !strings.Contains(out, "WARNING") || !strings.Contains(out, "reflog") {
-		t.Errorf("expected reflog warning in recovery output with --no-backup, got: %s", out)
+		t.Errorf("expected reflog warning in recovery output with -no-backup, got: %s", out)
 	}
 }
