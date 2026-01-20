@@ -10,6 +10,7 @@ type UserInput struct {
 	PrintRecovery bool   // Print recovery instructions and exit
 	NoBackup      bool   // Skip creating backup branch
 	Yes           bool   // Skip confirmation prompt
+	ListBackups   bool   // List all backup branches and exit
 }
 
 // CommitInfo holds information about a single commit

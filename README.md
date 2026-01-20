@@ -36,6 +36,7 @@ locsquash -n <count> [options]
 - `-allow-empty` - Allow creating an empty commit if squashed changes cancel out
 - `-dry-run` - Preview the git commands without executing them
 - `-print-recovery` - Print recovery commands and exit
+- `-list-backups` - List all backup branches and exit
 - `-v`, `-version` - Print version and exit
 
 ## Examples
@@ -76,6 +77,12 @@ Squash with uncommitted changes (auto-stash):
 locsquash -n 3 -stash
 ```
 
+List all backup branches:
+
+```bash
+locsquash -list-backups
+```
+
 ## How It Works
 
 1. Shows the commits that will be squashed and asks for confirmation (skip with `-y`)
@@ -113,6 +120,12 @@ If something goes wrong, recover using the backup branch:
 
 ```bash
 git reset --hard locsquash/backup-<timestamp>
+```
+
+To list all backup branches:
+
+```bash
+locsquash -list-backups
 ```
 
 To see recovery instructions before running:

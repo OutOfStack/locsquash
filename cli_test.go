@@ -246,7 +246,7 @@ func TestCLI_RecoveryFromBackup(t *testing.T) {
 	// Find backup branch
 	branches := tr.git(t.Context(), "branch", "-a")
 	var backupBranch string
-	for _, line := range strings.Split(branches, "\n") {
+	for line := range strings.SplitSeq(branches, "\n") {
 		line = strings.TrimSpace(line)
 		if strings.Contains(line, "locsquash/backup-") {
 			backupBranch = strings.TrimPrefix(line, "* ")
@@ -461,5 +461,68 @@ func TestCLI_PrintRecoveryWithNoBackup(t *testing.T) {
 
 	if !strings.Contains(out, "WARNING") || !strings.Contains(out, "reflog") {
 		t.Errorf("expected reflog warning in recovery output with -no-backup, got: %s", out)
+	}
+}
+
+// TestCLI_ListBackupsEmpty tests that -list-backups works when no backups exist
+func TestCLI_ListBackupsEmpty(t *testing.T) {
+	tr := newTestRepo(t)
+	tr.createCommitsWithMessages("a", "b", "c")
+
+	out := tr.runCLISuccess("-list-backups")
+
+	if !strings.Contains(out, "No backup branches found") {
+		t.Errorf("expected 'No backup branches found', got: %s", out)
+	}
+}
+
+// TestCLI_ListBackupsShowsBackups tests that -list-backups lists existing backup branches
+func TestCLI_ListBackupsShowsBackups(t *testing.T) {
+	tr := newTestRepo(t)
+	tr.createCommitsWithMessages("a", "b", "c", "d")
+
+	// Create a backup by squashing
+	tr.runCLISuccess("-n", "2", "-m", "squashed", "-yes")
+
+	out := tr.runCLISuccess("-list-backups")
+
+	if !strings.Contains(out, "locsquash/backup-") {
+		t.Errorf("expected backup branch in output, got: %s", out)
+	}
+	if !strings.Contains(out, "Found 1 backup branch") {
+		t.Errorf("expected 'Found 1 backup branch', got: %s", out)
+	}
+	if !strings.Contains(out, "git reset --hard") {
+		t.Errorf("expected restore instructions in output, got: %s", out)
+	}
+}
+
+// TestCLI_ListBackupsMultiple tests that -list-backups lists multiple backups
+func TestCLI_ListBackupsMultiple(t *testing.T) {
+	tr := newTestRepo(t)
+	tr.createCommitsWithMessages("1", "2", "3", "4", "5", "6")
+
+	// Create two backups
+	tr.runCLISuccess("-n", "2", "-m", "squash1", "-yes")
+	tr.createCommitsWithMessages("7", "8")
+	tr.runCLISuccess("-n", "2", "-m", "squash2", "-yes")
+
+	out := tr.runCLISuccess("-list-backups")
+
+	if !strings.Contains(out, "Found 2 backup branch") {
+		t.Errorf("expected 'Found 2 backup branch', got: %s", out)
+	}
+}
+
+// TestCLI_ListBackupsNoNRequired tests that -list-backups works without -n flag
+func TestCLI_ListBackupsNoNRequired(t *testing.T) {
+	tr := newTestRepo(t)
+	tr.createCommitsWithMessages("a", "b")
+
+	// Should work without -n (early exit path)
+	out := tr.runCLISuccess("-list-backups")
+
+	if !strings.Contains(out, "No backup branches found") {
+		t.Errorf("expected list backups to work without -n, got: %s", out)
 	}
 }

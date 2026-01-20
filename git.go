@@ -173,3 +173,42 @@ func gitCommitWithDates(ctx context.Context, isoDate, message string, allowEmpty
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
 }
+
+// BackupBranch holds information about a backup branch
+type BackupBranch struct {
+	Name      string // Full branch name (e.g., locsquash/backup-20240115-143022)
+	CommitRef string // Short commit hash the branch points to
+	Subject   string // Commit subject
+}
+
+// listBackupBranches returns all branches matching the locsquash/backup-* pattern
+func listBackupBranches(ctx context.Context) ([]BackupBranch, error) {
+	// List branches matching pattern with commit hash and subject
+	// Format: refname:short + tab + objectname:short + tab + subject
+	out, err := gitStdout(ctx, "for-each-ref",
+		"--format=%(refname:short)\t%(objectname:short)\t%(subject)",
+		"--sort=-creatordate",
+		"refs/heads/locsquash/backup-*")
+	if err != nil {
+		return nil, err
+	}
+	if out == "" {
+		return nil, nil
+	}
+	lines := strings.Split(out, "\n")
+	branches := make([]BackupBranch, 0, len(lines))
+	for _, line := range lines {
+		if line == "" {
+			continue
+		}
+		parts := strings.SplitN(line, "\t", 3)
+		if len(parts) >= 2 {
+			b := BackupBranch{Name: parts[0], CommitRef: parts[1]}
+			if len(parts) == 3 {
+				b.Subject = parts[2]
+			}
+			branches = append(branches, b)
+		}
+	}
+	return branches, nil
+}

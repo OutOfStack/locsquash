@@ -29,6 +29,7 @@ func main() {
 	flag.BoolVar(&input.NoBackup, "no-backup", false, "Skip creating backup branch")
 	flag.BoolVar(&input.Yes, "yes", false, "Skip confirmation prompt")
 	flag.BoolVar(&input.Yes, "y", false, "Skip confirmation prompt (shorthand)")
+	flag.BoolVar(&input.ListBackups, "list-backups", false, "List all backup branches and exit")
 	flag.BoolVar(&showVersion, "version", false, "Print version and exit")
 	flag.BoolVar(&showVersion, "v", false, "Print version and exit (shorthand)")
 
@@ -39,11 +40,23 @@ func main() {
 		os.Exit(0)
 	}
 
+	ctx := context.Background()
+
+	if input.ListBackups {
+		if err := ensureInsideGitRepo(ctx); err != nil {
+			fatalf("Error: %v", err)
+		}
+		branches, err := listBackupBranches(ctx)
+		if err != nil {
+			fatalf("Error listing backup branches: %v", err)
+		}
+		printBackupBranches(branches)
+		os.Exit(0)
+	}
+
 	if input.SquashCount < 2 {
 		fatalf("Error: -n (Number of last commits to squash) must be at least 2.")
 	}
-
-	ctx := context.Background()
 
 	// Check if in git repo
 	if err := ensureInsideGitRepo(ctx); err != nil {
