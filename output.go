@@ -133,7 +133,11 @@ func printBackupBranches(branches []BackupBranch) {
 		fmt.Println("No backup branches found.")
 		return
 	}
-	fmt.Printf("Found %d backup branch(es):\n\n", len(branches))
+	noun := "branches"
+	if len(branches) == 1 {
+		noun = "branch"
+	}
+	fmt.Printf("Found %d backup %s:\n\n", len(branches), noun)
 	for _, b := range branches {
 		fmt.Printf("  %s %s %s\n",
 			colorize(colorGreen, b.Name),
