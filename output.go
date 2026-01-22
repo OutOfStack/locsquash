@@ -126,3 +126,28 @@ func (info SquashInfo) printRecovery() {
 
 	fmt.Println("# End of recovery instructions")
 }
+
+// printBackupBranches displays all backup branches with colorized output
+func printBackupBranches(branches []BackupBranch) {
+	if len(branches) == 0 {
+		fmt.Println("No backup branches found.")
+		return
+	}
+	noun := "branches"
+	if len(branches) == 1 {
+		noun = "branch"
+	}
+	fmt.Printf("Found %d backup %s:\n\n", len(branches), noun)
+	for _, b := range branches {
+		fmt.Printf("  %s %s %s\n",
+			colorize(colorGreen, b.Name),
+			colorize(colorYellow, b.CommitRef),
+			b.Subject)
+	}
+	fmt.Println()
+	fmt.Println("To restore a backup:")
+	fmt.Printf("  git reset --hard %s\n", colorize(colorCyan, "<branch-name>"))
+	fmt.Println()
+	fmt.Println("To delete a backup:")
+	fmt.Printf("  git branch -D %s\n", colorize(colorCyan, "<branch-name>"))
+}
