@@ -29,6 +29,7 @@ locsquash -n <count> [options]
 
 ### Options
 
+- `-from <ref>` - Anchor the squash range: integer `N` skips the top N commits from HEAD (they are reapplied after squash), or a commit hash sets that commit as the newest one to squash (`ref` and `N-1` commits before it are squashed)
 - `-m <msg>` - Custom commit message for the squashed commit (defaults to the oldest commit's message)
 - `-y`, `-yes` - Skip confirmation prompt (useful for scripting)
 - `-no-backup` - Skip creating backup branch
@@ -77,6 +78,18 @@ Squash with uncommitted changes (auto-stash):
 locsquash -n 3 -stash
 ```
 
+Squash 2 commits in the middle of history, skipping the top 1 (reapplied after):
+
+```bash
+locsquash -n 2 -from 1 -y
+```
+
+Same using a commit hash — `<hash-of-B>` is the newest commit to squash:
+
+```bash
+locsquash -n 2 -from <hash-of-B> -y
+```
+
 List all backup branches:
 
 ```bash
@@ -88,9 +101,11 @@ locsquash -list-backups
 1. Shows the commits that will be squashed and asks for confirmation (skip with `-y`)
 2. Creates a backup branch (`locsquash/backup-<timestamp>`) before any changes (skip with `-no-backup`)
 3. Optionally stashes uncommitted changes if `-stash` is provided
-4. Performs a soft reset to `HEAD~N`
-5. Creates a new commit with all changes, preserving the most recent commit's date and using the oldest commit message (unless `-m` is provided)
-6. Restores stashed changes if applicable
+4. If `-from` targets a commit below HEAD, hard-resets past the commits above the squash range
+5. Performs a soft reset to `HEAD~N`
+6. Creates a new commit with all changes, preserving the top squash commit's date and using the oldest commit message (unless `-m` is provided)
+7. Cherry-picks back any commits that were above the squash range (when `-from` is used)
+8. Restores stashed changes if applicable
 
 ## Development
 

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -21,6 +22,7 @@ func main() {
 	var showVersion bool
 
 	flag.IntVar(&input.SquashCount, "n", 0, "Number of last commits to squash (must be at least 2)")
+	flag.StringVar(&input.From, "from", "", "Oldest commit in squash range: HEAD~N integer offset or commit hash/ref")
 	flag.StringVar(&input.NewMessage, "m", "", "New commit message for the squashed commit")
 	flag.BoolVar(&input.AllowStash, "stash", false, "Auto-stash uncommitted changes (default requires clean state)")
 	flag.BoolVar(&input.AllowEmpty, "allow-empty", false, "Allow creating an empty commit if squashed changes cancel out")
@@ -81,6 +83,49 @@ func main() {
 
 	info := SquashInfo{UserInput: input}
 
+	// Resolve -from flag into SkipCount
+	if input.From != "" {
+		if n, parseErr := strconv.Atoi(input.From); parseErr == nil {
+			// Integer form: -from N means skip N commits from the top (SkipCount = N)
+			if n < 0 {
+				fatalf("Error: -from: integer value must be non-negative")
+			}
+			info.SkipCount = n
+			if info.SkipCount+info.SquashCount >= totalCommits {
+				fatalf("Error: repository has %d commits; -from %d + -n %d would consume all commits (at least one commit must remain as the base).",
+					totalCommits, n, input.SquashCount)
+			}
+		} else {
+			// Hash/ref form: -from <ref> means ref is the newest commit in the squash range.
+			// ref and N-1 commits before it are squashed; commits above ref are cherry-picked back.
+			topHash, fromErr := gitResolveRef(ctx, input.From)
+			if fromErr != nil {
+				fatalf("Error: -from: %v", fromErr)
+			}
+
+			d, fromErr := gitCountCommitsAfter(ctx, topHash)
+			if fromErr != nil {
+				fatalf("Error: -from: %v", fromErr)
+			}
+
+			// SkipCount = commits above ref that get cherry-picked back
+			info.SkipCount = d
+
+			if info.SkipCount+info.SquashCount >= totalCommits {
+				fatalf("Error: -from commit has only %d commit(s) before it; -n %d requires at least %d (including one base commit).",
+					totalCommits-d-1, input.SquashCount, input.SquashCount)
+			}
+		}
+	}
+
+	// Collect hashes of commits above the squash range (to cherry-pick back after squash)
+	if info.SkipCount > 0 {
+		info.SkipHashes, err = gitGetCommitHashes(ctx, info.SkipCount)
+		if err != nil {
+			fatalf("Error retrieving skip commit hashes: %v", err)
+		}
+	}
+
 	// Check for uncommitted changes
 	info.Dirty, err = hasUncommittedChanges(ctx)
 	if err != nil {
@@ -95,7 +140,7 @@ func main() {
 	}
 
 	// Compute result commit
-	oldestCommitRef := fmt.Sprintf("HEAD~%d", info.SquashCount-1)
+	oldestCommitRef := fmt.Sprintf("HEAD~%d", info.SkipCount+info.SquashCount-1)
 	oldestMessage, err := gitLogSingle(ctx, oldestCommitRef, "%B")
 	if err != nil {
 		fatalf("Failed to retrieve oldest commit message: %v", err)
@@ -107,16 +152,28 @@ func main() {
 		info.CommitMessage = oldestMessage
 	}
 
-	recentDate, err := gitLogSingle(ctx, "HEAD", "%cI")
+	// Use date of top of squash range (HEAD~SkipCount), not HEAD (which may be above squash range)
+	recentCommitRef := headRef
+	if info.SkipCount > 0 {
+		recentCommitRef = fmt.Sprintf("HEAD~%d", info.SkipCount)
+	}
+	recentDate, err := gitLogSingle(ctx, recentCommitRef, "%cI")
 	if err != nil {
 		fatalf("Failed to retrieve HEAD commit date: %v", err)
 	}
 	info.RecentDate = strings.TrimSpace(recentDate)
 
 	info.BackupName = "locsquash/backup-" + time.Now().UTC().Format("20060102-150405")
+	// ResetRef is relative to position after the hard reset (when SkipCount > 0)
 	info.ResetRef = fmt.Sprintf("HEAD~%d", info.SquashCount)
 
-	hasChanges, err := gitHasChangesBetween(ctx, info.ResetRef, "HEAD")
+	// Check net changes in the squash range only (excluding skip commits above it)
+	squashTopRef := "HEAD"
+	if info.SkipCount > 0 {
+		squashTopRef = fmt.Sprintf("HEAD~%d", info.SkipCount)
+	}
+	squashBaseRef := fmt.Sprintf("HEAD~%d", info.SkipCount+info.SquashCount)
+	hasChanges, err := gitHasChangesBetween(ctx, squashBaseRef, squashTopRef)
 	if err != nil {
 		fatalf("Error checking commit diff: %v", err)
 	}
@@ -125,7 +182,7 @@ func main() {
 	}
 
 	// Retrieve commit list for preview
-	info.Commits, err = gitLogCommits(ctx, info.SquashCount)
+	info.Commits, err = gitLogCommits(ctx, info.SquashCount, info.SkipCount)
 	if err != nil {
 		fatalf("Error retrieving commit list: %v", err)
 	}
@@ -174,7 +231,16 @@ func main() {
 		info.BackupName = "" // Clear so recoveryHint knows no backup exists
 	}
 
-	// Soft reset to HEAD~N
+	// If commits above squash range exist, hard reset past them first so soft reset lands correctly
+	if info.SkipCount > 0 {
+		hardResetRef := fmt.Sprintf("HEAD~%d", info.SkipCount)
+		fmt.Printf("Hard resetting to %s to position below cherry-pick targets...\n", hardResetRef)
+		if err = runGitCommand(ctx, "reset", "--hard", hardResetRef); err != nil {
+			fatalf("Failed to hard reset: %v%s", err, recoveryHint(info.BackupName))
+		}
+	}
+
+	// Soft reset to stage the squash range
 	fmt.Printf("Performing soft reset to %s...\n", info.ResetRef)
 	if err = runGitCommand(ctx, "reset", "--soft", info.ResetRef); err != nil {
 		fatalf("Failed to perform soft reset: %v%s", err, recoveryHint(info.BackupName))
@@ -184,6 +250,17 @@ func main() {
 	fmt.Println("Creating squashed commit...")
 	if err = gitCommitWithDates(ctx, info.RecentDate, info.CommitMessage, info.AllowEmpty); err != nil {
 		fatalf("Failed to create squashed commit: %v%s", err, recoveryHint(info.BackupName))
+	}
+
+	// Cherry-pick the commits that were above the squash range (oldest first)
+	if info.SkipCount > 0 {
+		fmt.Printf("Reapplying %d commit(s) above squash range...\n", info.SkipCount)
+		for i := info.SkipCount - 1; i >= 0; i-- {
+			if err = runGitCommand(ctx, "cherry-pick", info.SkipHashes[i]); err != nil {
+				fatalf("Cherry-pick of %.8s failed (resolve conflicts, then continue):%s",
+					info.SkipHashes[i], recoveryHint(info.BackupName))
+			}
+		}
 	}
 
 	// Reapply stash if we created one: apply first, then drop only if success

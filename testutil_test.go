@@ -80,7 +80,7 @@ func newTestRepo(t *testing.T) *testRepo {
 // git runs a git command in the test repository
 func (tr *testRepo) git(ctx context.Context, args ...string) string {
 	tr.t.Helper()
-	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd := exec.CommandContext(ctx, "git", args...) //nolint:gosec // args are always hardcoded strings from internal callers
 	cmd.Dir = tr.Dir
 	out, err := cmd.CombinedOutput()
 	if err != nil {

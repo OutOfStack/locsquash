@@ -526,3 +526,127 @@ func TestCLI_ListBackupsNoNRequired(t *testing.T) {
 		t.Errorf("expected list backups to work without -n, got: %s", out)
 	}
 }
+
+// TestCLI_FromHashSquashesMiddle tests squashing by hash: ref is newest commit to squash,
+// N-1 commits before it are also squashed, commits above ref are reapplied
+func TestCLI_FromHashSquashesMiddle(t *testing.T) {
+	tr := newTestRepo(t)
+	tr.createCommitsWithMessages("a", "b", "c", "d")
+
+	// ref = "c" (HEAD~1): squash c + b (c and the commit before it), reapply d
+	cHash := tr.git(t.Context(), "rev-parse", "HEAD~1")
+
+	tr.runCLISuccess("-n", "2", "-from", cHash, "-m", "squashed-bc", "-yes")
+
+	if count := tr.commitCount(); count != 3 {
+		t.Errorf("expected 3 commits after squashing b+c with d reapplied, got %d", count)
+	}
+
+	// HEAD should be the reapplied "d" commit
+	headMsg := tr.lastCommitMessage()
+	if headMsg != "d" {
+		t.Errorf("expected HEAD to be 'd' (reapplied), got %q", headMsg)
+	}
+}
+
+// TestCLI_FromIntegerOffset tests -from with an integer (skip N commits from top)
+func TestCLI_FromIntegerOffset(t *testing.T) {
+	tr := newTestRepo(t)
+	tr.createCommitsWithMessages("a", "b", "c", "d", "e")
+
+	// "-from 1" = skip 1 commit (e=HEAD), squash c+d, reapply e
+	tr.runCLISuccess("-n", "2", "-from", "1", "-m", "squashed-cd", "-yes")
+
+	if count := tr.commitCount(); count != 4 {
+		t.Errorf("expected 4 commits, got %d", count)
+	}
+	headMsg := tr.lastCommitMessage()
+	if headMsg != "e" {
+		t.Errorf("expected HEAD to be 'e' (reapplied), got %q", headMsg)
+	}
+}
+
+// TestCLI_FromEquivalentToN tests that -from 0 -n 2 equals plain -n 2 (no skips)
+func TestCLI_FromEquivalentToN(t *testing.T) {
+	tr := newTestRepo(t)
+	tr.createCommitsWithMessages("a", "b", "c", "d")
+
+	// "-from 0" = skip 0 commits = same as plain -n 2
+	tr.runCLISuccess("-n", "2", "-from", "0", "-m", "squashed-cd", "-yes")
+
+	if count := tr.commitCount(); count != 3 {
+		t.Errorf("expected 3 commits, got %d", count)
+	}
+	lastMsg := tr.lastCommitMessage()
+	if lastMsg != "squashed-cd" {
+		t.Errorf("expected 'squashed-cd', got %q", lastMsg)
+	}
+}
+
+// TestCLI_FromHashNotAncestor tests that a hash not in current branch history errors
+func TestCLI_FromHashNotAncestor(t *testing.T) {
+	tr := newTestRepo(t)
+	tr.createCommitsWithMessages("a", "b", "c")
+
+	// Create a commit on a separate branch that diverges after "c"
+	tr.git(t.Context(), "checkout", "-b", "other")
+	tr.createCommit("diverged")
+	divergedHash := tr.git(t.Context(), "rev-parse", "HEAD")
+	tr.git(t.Context(), "checkout", "-") // back to previous branch
+
+	out := tr.runCLIFailure("-n", "2", "-from", divergedHash)
+	if !strings.Contains(out, "not an ancestor") {
+		t.Errorf("expected 'not an ancestor' error, got: %s", out)
+	}
+}
+
+// TestCLI_FromRangeTooLarge tests that -from + -n exceeding available commits errors
+func TestCLI_FromRangeTooLarge(t *testing.T) {
+	tr := newTestRepo(t)
+	tr.createCommitsWithMessages("a", "b", "c", "d", "e")
+
+	// HEAD~1 = "d"; only 1 commit above it (e), but -n 4 needs 3 above it
+	dHash := tr.git(t.Context(), "rev-parse", "HEAD~1")
+
+	out := tr.runCLIFailure("-n", "4", "-from", dHash)
+	if !strings.Contains(out, "requires at least") {
+		t.Errorf("expected range-too-large error, got: %s", out)
+	}
+}
+
+// TestCLI_FromDryRun verifies that hard reset and cherry-pick appear in dry-run output when K>0
+func TestCLI_FromDryRun(t *testing.T) {
+	tr := newTestRepo(t)
+	tr.createCommitsWithMessages("a", "b", "c", "d", "e")
+
+	// ref = "c" (HEAD~2): squash c+b, reapply d+e (SkipCount=2)
+	cHash := tr.git(t.Context(), "rev-parse", "HEAD~2")
+
+	out := tr.runCLISuccess("-n", "2", "-from", cHash, "-dry-run")
+
+	if !strings.Contains(out, "reset --hard") {
+		t.Errorf("expected 'reset --hard' in dry-run output, got: %s", out)
+	}
+	if !strings.Contains(out, "cherry-pick") {
+		t.Errorf("expected 'cherry-pick' in dry-run output, got: %s", out)
+	}
+}
+
+// TestCLI_FromShortHash tests that an abbreviated commit hash works with -from
+func TestCLI_FromShortHash(t *testing.T) {
+	tr := newTestRepo(t)
+	tr.createCommitsWithMessages("a", "b", "c", "d")
+
+	// ref = "c" (HEAD~1): squash c+b, reapply d — using abbreviated hash
+	shortHash := tr.git(t.Context(), "rev-parse", "--short", "HEAD~1")
+
+	tr.runCLISuccess("-n", "2", "-from", shortHash, "-m", "squashed-bc", "-yes")
+
+	if count := tr.commitCount(); count != 3 {
+		t.Errorf("expected 3 commits, got %d", count)
+	}
+	headMsg := tr.lastCommitMessage()
+	if headMsg != "d" {
+		t.Errorf("expected HEAD to be 'd' (reapplied), got %q", headMsg)
+	}
+}

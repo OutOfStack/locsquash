@@ -42,7 +42,7 @@ jobs:
     - name: golangci-lint
       uses: golangci/golangci-lint-action@v8
       with:
-        version: v2.7
+        version: v2.11
 
     - name: Run tests
       run: go test -race -vet=off ./...
