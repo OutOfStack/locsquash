@@ -162,7 +162,7 @@ func gitCountCommitsAfter(ctx context.Context, hash string) (int, error) {
 		}
 		return 0, err
 	}
-	out, err := gitStdout(ctx, "rev-list", "--count", hash+"..HEAD")
+	out, err := gitStdout(ctx, "rev-list", "--first-parent", "--count", hash+"..HEAD")
 	if err != nil {
 		return 0, err
 	}
@@ -171,6 +171,21 @@ func gitCountCommitsAfter(ctx context.Context, hash string) (int, error) {
 		return 0, err
 	}
 	return n, nil
+}
+
+// gitFindMergeCommitInTop returns the hash of the first merge commit found among the top count
+// commits from HEAD (first-parent only), or empty string if none exist.
+// Uses range HEAD~count..HEAD so only those exact commits are inspected, not all of history.
+func gitFindMergeCommitInTop(ctx context.Context, count int) (string, error) {
+	out, err := gitStdout(ctx, "log", "--first-parent", "--merges", "--format=%H",
+		fmt.Sprintf("%s~%d..%s", headRef, count, headRef))
+	if err != nil {
+		return "", err
+	}
+	if out == "" {
+		return "", nil
+	}
+	return strings.SplitN(out, "\n", 2)[0], nil
 }
 
 // gitGetCommitHashes returns hashes of the top count commits from HEAD (newest first)
@@ -194,7 +209,7 @@ func gitGetCommitHashes(ctx context.Context, count int) ([]string, error) {
 func gitLogCommits(ctx context.Context, count, skip int) ([]CommitInfo, error) {
 	startRef := headRef
 	if skip > 0 {
-		startRef = fmt.Sprintf("HEAD~%d", skip)
+		startRef = fmt.Sprintf("%s~%d", headRef, skip)
 	}
 	// Format: short hash + tab + subject
 	// Use --first-parent to match HEAD~N traversal used by git reset

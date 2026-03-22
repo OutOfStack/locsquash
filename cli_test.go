@@ -609,7 +609,7 @@ func TestCLI_FromRangeTooLarge(t *testing.T) {
 	dHash := tr.git(t.Context(), "rev-parse", "HEAD~1")
 
 	out := tr.runCLIFailure("-n", "4", "-from", dHash)
-	if !strings.Contains(out, "requires at least") {
+	if !strings.Contains(out, "would consume all") {
 		t.Errorf("expected range-too-large error, got: %s", out)
 	}
 }

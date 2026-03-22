@@ -81,11 +81,11 @@ func (info SquashInfo) printDryRun() {
 
 	if info.SkipCount > 0 {
 		fmt.Printf("# Move HEAD below cherry-pick targets\n")
-		fmt.Printf("git reset --hard HEAD~%d\n\n", info.SkipCount)
+		fmt.Printf("git reset --hard %s\n\n", info.squashTopRef())
 	}
 
 	fmt.Printf("# Rewrite history\n")
-	fmt.Printf("git reset --soft %s\n\n", info.ResetRef)
+	fmt.Printf("git reset --soft %s\n\n", info.softResetRef())
 
 	fmt.Printf("# Create squashed commit\n")
 	allowEmptyFlag := ""
@@ -97,7 +97,7 @@ func (info SquashInfo) printDryRun() {
 	if info.SkipCount > 0 {
 		fmt.Printf("# Reapply commits above squash range (oldest first)\n")
 		for i := info.SkipCount - 1; i >= 0; i-- {
-			fmt.Printf("git cherry-pick %s\n", info.SkipHashes[i][:8])
+			fmt.Printf("git cherry-pick --allow-empty %s\n", info.SkipHashes[i][:8])
 		}
 		fmt.Println()
 	}

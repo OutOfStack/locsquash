@@ -112,8 +112,8 @@ func main() {
 			info.SkipCount = d
 
 			if info.SkipCount+info.SquashCount >= totalCommits {
-				fatalf("Error: -from commit has only %d commit(s) before it; -n %d requires at least %d (including one base commit).",
-					totalCommits-d-1, input.SquashCount, input.SquashCount)
+				fatalf("Error: -from ref resolves to skipping %d commits. With -n %d, this would consume all %d commits (at least one must remain as a base).",
+					info.SkipCount, input.SquashCount, totalCommits)
 			}
 		}
 	}
@@ -123,6 +123,10 @@ func main() {
 		info.SkipHashes, err = gitGetCommitHashes(ctx, info.SkipCount)
 		if err != nil {
 			fatalf("Error retrieving skip commit hashes: %v", err)
+		}
+		// Merge commits cannot be cherry-picked without -m; reject upfront
+		if mergeHash, mergeErr := gitFindMergeCommitInTop(ctx, info.SkipCount); mergeErr == nil && mergeHash != "" {
+			fatalf("Error: commit %.8s above the squash range is a merge commit and cannot be automatically reapplied. Use -from with an offset that does not include merge commits.", mergeHash)
 		}
 	}
 
@@ -140,8 +144,7 @@ func main() {
 	}
 
 	// Compute result commit
-	oldestCommitRef := fmt.Sprintf("HEAD~%d", info.SkipCount+info.SquashCount-1)
-	oldestMessage, err := gitLogSingle(ctx, oldestCommitRef, "%B")
+	oldestMessage, err := gitLogSingle(ctx, info.oldestRef(), "%B")
 	if err != nil {
 		fatalf("Failed to retrieve oldest commit message: %v", err)
 	}
@@ -152,28 +155,17 @@ func main() {
 		info.CommitMessage = oldestMessage
 	}
 
-	// Use date of top of squash range (HEAD~SkipCount), not HEAD (which may be above squash range)
-	recentCommitRef := headRef
-	if info.SkipCount > 0 {
-		recentCommitRef = fmt.Sprintf("HEAD~%d", info.SkipCount)
-	}
-	recentDate, err := gitLogSingle(ctx, recentCommitRef, "%cI")
+	// Use date of top of squash range, not HEAD (which may be above squash range)
+	recentDate, err := gitLogSingle(ctx, info.squashTopRef(), "%cI")
 	if err != nil {
 		fatalf("Failed to retrieve HEAD commit date: %v", err)
 	}
 	info.RecentDate = strings.TrimSpace(recentDate)
 
 	info.BackupName = "locsquash/backup-" + time.Now().UTC().Format("20060102-150405")
-	// ResetRef is relative to position after the hard reset (when SkipCount > 0)
-	info.ResetRef = fmt.Sprintf("HEAD~%d", info.SquashCount)
 
 	// Check net changes in the squash range only (excluding skip commits above it)
-	squashTopRef := "HEAD"
-	if info.SkipCount > 0 {
-		squashTopRef = fmt.Sprintf("HEAD~%d", info.SkipCount)
-	}
-	squashBaseRef := fmt.Sprintf("HEAD~%d", info.SkipCount+info.SquashCount)
-	hasChanges, err := gitHasChangesBetween(ctx, squashBaseRef, squashTopRef)
+	hasChanges, err := gitHasChangesBetween(ctx, info.squashBaseRef(), info.squashTopRef())
 	if err != nil {
 		fatalf("Error checking commit diff: %v", err)
 	}
@@ -233,16 +225,15 @@ func main() {
 
 	// If commits above squash range exist, hard reset past them first so soft reset lands correctly
 	if info.SkipCount > 0 {
-		hardResetRef := fmt.Sprintf("HEAD~%d", info.SkipCount)
-		fmt.Printf("Hard resetting to %s to position below cherry-pick targets...\n", hardResetRef)
-		if err = runGitCommand(ctx, "reset", "--hard", hardResetRef); err != nil {
+		fmt.Printf("Hard resetting to %s to position below cherry-pick targets...\n", info.squashTopRef())
+		if err = runGitCommand(ctx, "reset", "--hard", info.squashTopRef()); err != nil {
 			fatalf("Failed to hard reset: %v%s", err, recoveryHint(info.BackupName))
 		}
 	}
 
 	// Soft reset to stage the squash range
-	fmt.Printf("Performing soft reset to %s...\n", info.ResetRef)
-	if err = runGitCommand(ctx, "reset", "--soft", info.ResetRef); err != nil {
+	fmt.Printf("Performing soft reset to %s...\n", info.softResetRef())
+	if err = runGitCommand(ctx, "reset", "--soft", info.softResetRef()); err != nil {
 		fatalf("Failed to perform soft reset: %v%s", err, recoveryHint(info.BackupName))
 	}
 
@@ -256,7 +247,7 @@ func main() {
 	if info.SkipCount > 0 {
 		fmt.Printf("Reapplying %d commit(s) above squash range...\n", info.SkipCount)
 		for i := info.SkipCount - 1; i >= 0; i-- {
-			if err = runGitCommand(ctx, "cherry-pick", info.SkipHashes[i]); err != nil {
+			if err = runGitCommand(ctx, "cherry-pick", "--allow-empty", info.SkipHashes[i]); err != nil {
 				fatalf("Cherry-pick of %.8s failed (resolve conflicts, then continue):%s",
 					info.SkipHashes[i], recoveryHint(info.BackupName))
 			}
