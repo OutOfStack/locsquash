@@ -83,26 +83,14 @@ func main() {
 
 	info := SquashInfo{UserInput: input}
 
-	// Resolve -from flag into SkipCount
+	// Resolve -from flag into SkipCount.
+	// Try hash/ref first so that short hashes that happen to be decimal (e.g. "5589260")
+	// are not mistakenly parsed as integer skip counts.
+	// Fall back to integer only when the value cannot be resolved as a git ref.
 	if input.From != "" {
-		if n, parseErr := strconv.Atoi(input.From); parseErr == nil {
-			// Integer form: -from N means skip N commits from the top (SkipCount = N)
-			if n < 0 {
-				fatalf("Error: -from: integer value must be non-negative")
-			}
-			info.SkipCount = n
-			if info.SkipCount+info.SquashCount >= totalCommits {
-				fatalf("Error: repository has %d commits; -from %d + -n %d would consume all commits (at least one commit must remain as the base).",
-					totalCommits, n, input.SquashCount)
-			}
-		} else {
-			// Hash/ref form: -from <ref> means ref is the newest commit in the squash range.
+		if topHash, fromErr := gitResolveRef(ctx, input.From); fromErr == nil {
+			// Hash/ref form: ref is the newest commit in the squash range.
 			// ref and N-1 commits before it are squashed; commits above ref are cherry-picked back.
-			topHash, fromErr := gitResolveRef(ctx, input.From)
-			if fromErr != nil {
-				fatalf("Error: -from: %v", fromErr)
-			}
-
 			d, fromErr := gitCountCommitsAfter(ctx, topHash)
 			if fromErr != nil {
 				fatalf("Error: -from: %v", fromErr)
@@ -115,6 +103,18 @@ func main() {
 				fatalf("Error: -from ref resolves to skipping %d commits. With -n %d, this would consume all %d commits (at least one must remain as a base).",
 					info.SkipCount, input.SquashCount, totalCommits)
 			}
+		} else if n, parseErr := strconv.Atoi(input.From); parseErr == nil {
+			// Integer form: -from N means skip N commits from the top (SkipCount = N)
+			if n < 0 {
+				fatalf("Error: -from: integer value must be non-negative")
+			}
+			info.SkipCount = n
+			if info.SkipCount+info.SquashCount >= totalCommits {
+				fatalf("Error: repository has %d commits; -from %d + -n %d would consume all commits (at least one commit must remain as the base).",
+					totalCommits, n, input.SquashCount)
+			}
+		} else {
+			fatalf("Error: -from: %q is not a valid commit ref or non-negative integer", input.From)
 		}
 	}
 

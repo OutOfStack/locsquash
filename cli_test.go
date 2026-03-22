@@ -650,3 +650,29 @@ func TestCLI_FromShortHash(t *testing.T) {
 		t.Errorf("expected HEAD to be 'd' (reapplied), got %q", headMsg)
 	}
 }
+
+// TestCLI_FromIntLookingTag guards against the regression where strconv.Atoi ran before
+// gitResolveRef, causing decimal-looking ref names (e.g. a tag "3") to be swallowed as
+// integer skip counts instead of being resolved as git refs.
+//
+// Tag "3" is placed at HEAD~1, not HEAD~3. Parsed as integer, SkipCount=3 and
+// 3+2=5 ≥ totalCommits(5) → the CLI would error. Resolved as the tag, SkipCount=1 → success.
+func TestCLI_FromIntLookingTag(t *testing.T) {
+	tr := newTestRepo(t)
+	tr.createCommitsWithMessages("a", "b", "c", "d", "e") // 5 commits; HEAD=e
+
+	// Tag "3" points to HEAD~1 (= d), not HEAD~3.
+	tr.git(t.Context(), "tag", "3", "HEAD~1")
+
+	// If "3" were parsed as integer: SkipCount=3, 3+2=5 ≥ 5 → error.
+	// If "3" resolves as tag:        SkipCount=1, 1+2=3 < 5 → ok.
+	tr.runCLISuccess("-n", "2", "-from", "3", "-m", "squashed", "-yes")
+
+	// SkipCount=1: skip e, squash d+c, reapply e → a b squashed e = 4 commits
+	if count := tr.commitCount(); count != 4 {
+		t.Errorf("expected 4 commits after squash, got %d", count)
+	}
+	if msg := tr.lastCommitMessage(); msg != "e" {
+		t.Errorf("expected HEAD='e' (reapplied), got %q", msg)
+	}
+}
