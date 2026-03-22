@@ -11,9 +11,13 @@ import (
 	"strings"
 )
 
+const (
+	headRef = "HEAD"
+)
+
 // gitStdout runs a git command and returns its stdout
 func gitStdout(ctx context.Context, args ...string) (string, error) {
-	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd := exec.CommandContext(ctx, "git", args...) //nolint:gosec // args are always hardcoded strings from internal callers
 	var out bytes.Buffer
 	var errBuf bytes.Buffer
 	cmd.Stdout = &out
@@ -27,7 +31,7 @@ func gitStdout(ctx context.Context, args ...string) (string, error) {
 
 // runGitCommand runs a git command with output to stdout/stderr
 func runGitCommand(ctx context.Context, args ...string) error {
-	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd := exec.CommandContext(ctx, "git", args...) //nolint:gosec // args are always hardcoded strings from internal callers
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
@@ -54,7 +58,7 @@ func createBackupBranch(ctx context.Context, baseName string) (string, error) {
 			continue
 		}
 
-		if _, err := gitStdout(ctx, "branch", name, "HEAD"); err != nil {
+		if _, err := gitStdout(ctx, "branch", name, headRef); err != nil {
 			return "", err
 		}
 		return name, nil
@@ -97,7 +101,7 @@ func hasUncommittedChanges(ctx context.Context) (bool, error) {
 
 // gitHasChangesBetween returns true if there are changes between two refs.
 func gitHasChangesBetween(ctx context.Context, baseRef, headRef string) (bool, error) {
-	cmd := exec.CommandContext(ctx, "git", "diff", "--quiet", baseRef, headRef)
+	cmd := exec.CommandContext(ctx, "git", "diff", "--quiet", baseRef, headRef) //nolint:gosec // refs are internally computed HEAD~N strings
 	if err := cmd.Run(); err != nil {
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
@@ -122,7 +126,7 @@ func stashPushAndGetRef(ctx context.Context) (string, error) {
 
 // gitCommitCount returns the total number of commits in the current branch
 func gitCommitCount(ctx context.Context) (int, error) {
-	out, err := gitStdout(ctx, "rev-list", "--count", "HEAD")
+	out, err := gitStdout(ctx, "rev-list", "--count", headRef)
 	if err != nil {
 		return 0, errors.New("cannot count commits (does HEAD exist?)")
 	}
@@ -138,11 +142,78 @@ func gitLogSingle(ctx context.Context, ref, formatStr string) (string, error) {
 	return gitStdout(ctx, "log", "-1", "--format="+formatStr, ref)
 }
 
-// gitLogCommits retrieves the list of commits that will be squashed
-func gitLogCommits(ctx context.Context, count int) ([]CommitInfo, error) {
+// gitResolveRef resolves any ref to a canonical SHA (handles short hashes, branch names, HEAD~N, etc.)
+func gitResolveRef(ctx context.Context, ref string) (string, error) {
+	out, err := gitStdout(ctx, "rev-parse", "--verify", ref+"^{commit}")
+	if err != nil {
+		return "", fmt.Errorf("ref %q not found: %v", ref, err)
+	}
+	return out, nil
+}
+
+// gitCountCommitsAfter returns the number of commits strictly between hash and HEAD.
+// Returns an error if hash is not an ancestor of HEAD.
+func gitCountCommitsAfter(ctx context.Context, hash string) (int, error) {
+	cmd := exec.CommandContext(ctx, "git", "merge-base", "--is-ancestor", hash, headRef) //nolint:gosec // hash is a resolved SHA from gitResolveRef
+	if err := cmd.Run(); err != nil {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
+			return 0, fmt.Errorf("commit %.8s is not an ancestor of HEAD", hash)
+		}
+		return 0, err
+	}
+	out, err := gitStdout(ctx, "rev-list", "--first-parent", "--count", hash+"..HEAD")
+	if err != nil {
+		return 0, err
+	}
+	n, err := strconv.Atoi(out)
+	if err != nil {
+		return 0, err
+	}
+	return n, nil
+}
+
+// gitFindMergeCommitInTop returns the hash of the first merge commit found among the top count
+// commits from HEAD (first-parent only), or empty string if none exist.
+// Uses range HEAD~count..HEAD so only those exact commits are inspected, not all of history.
+func gitFindMergeCommitInTop(ctx context.Context, count int) (string, error) {
+	out, err := gitStdout(ctx, "log", "--first-parent", "--merges", "--format=%H",
+		fmt.Sprintf("%s~%d..%s", headRef, count, headRef))
+	if err != nil {
+		return "", err
+	}
+	if out == "" {
+		return "", nil
+	}
+	return strings.SplitN(out, "\n", 2)[0], nil
+}
+
+// gitGetCommitHashes returns hashes of the top count commits from HEAD (newest first)
+func gitGetCommitHashes(ctx context.Context, count int) ([]string, error) {
+	out, err := gitStdout(ctx, "log", "--first-parent", "-"+strconv.Itoa(count), "--format=%H", headRef)
+	if err != nil {
+		return nil, err
+	}
+	lines := strings.Split(out, "\n")
+	hashes := make([]string, 0, count)
+	for _, l := range lines {
+		if l != "" {
+			hashes = append(hashes, l)
+		}
+	}
+	return hashes, nil
+}
+
+// gitLogCommits retrieves the list of commits that will be squashed.
+// skip offsets the starting point down from HEAD (0 = start at HEAD).
+func gitLogCommits(ctx context.Context, count, skip int) ([]CommitInfo, error) {
+	startRef := headRef
+	if skip > 0 {
+		startRef = fmt.Sprintf("%s~%d", headRef, skip)
+	}
 	// Format: short hash + tab + subject
 	// Use --first-parent to match HEAD~N traversal used by git reset
-	out, err := gitStdout(ctx, "log", "--first-parent", "-"+strconv.Itoa(count), "--format=%h\t%s", "HEAD")
+	out, err := gitStdout(ctx, "log", "--first-parent", "-"+strconv.Itoa(count), "--format=%h\t%s", startRef)
 	if err != nil {
 		return nil, err
 	}

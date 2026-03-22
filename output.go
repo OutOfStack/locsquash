@@ -79,8 +79,13 @@ func (info SquashInfo) printDryRun() {
 		fmt.Printf("# (stash ref will be: stash@{0})\n\n")
 	}
 
+	if info.SkipCount > 0 {
+		fmt.Printf("# Move HEAD below cherry-pick targets\n")
+		fmt.Printf("git reset --hard %s\n\n", info.squashTopRef())
+	}
+
 	fmt.Printf("# Rewrite history\n")
-	fmt.Printf("git reset --soft %s\n\n", info.ResetRef)
+	fmt.Printf("git reset --soft %s\n\n", info.softResetRef())
 
 	fmt.Printf("# Create squashed commit\n")
 	allowEmptyFlag := ""
@@ -88,6 +93,14 @@ func (info SquashInfo) printDryRun() {
 		allowEmptyFlag = " --allow-empty"
 	}
 	fmt.Printf("GIT_COMMITTER_DATE=%s git commit --date %s%s -m %q\n\n", info.RecentDate, info.RecentDate, allowEmptyFlag, info.CommitMessage)
+
+	if info.SkipCount > 0 {
+		fmt.Printf("# Reapply commits above squash range (oldest first)\n")
+		for i := info.SkipCount - 1; i >= 0; i-- {
+			fmt.Printf("git cherry-pick --allow-empty %s\n", info.SkipHashes[i][:8])
+		}
+		fmt.Println()
+	}
 
 	if info.Dirty && info.AllowStash {
 		fmt.Printf("# Restore working tree\n")
