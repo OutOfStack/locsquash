@@ -91,9 +91,9 @@ func main() {
 		if topHash, fromErr := gitResolveRef(ctx, input.From); fromErr == nil {
 			// Hash/ref form: ref is the newest commit in the squash range.
 			// ref and N-1 commits before it are squashed; commits above ref are cherry-picked back.
-			d, fromErr := gitCountCommitsAfter(ctx, topHash)
-			if fromErr != nil {
-				fatalf("Error: -from: %v", fromErr)
+			d, countErr := gitCountCommitsAfter(ctx, topHash)
+			if countErr != nil {
+				fatalf("Error: -from: %v", countErr)
 			}
 
 			// SkipCount = commits above ref that get cherry-picked back
@@ -248,7 +248,7 @@ func main() {
 		fmt.Printf("Reapplying %d commit(s) above squash range...\n", info.SkipCount)
 		for i := info.SkipCount - 1; i >= 0; i-- {
 			if err = runGitCommand(ctx, "cherry-pick", "--allow-empty", info.SkipHashes[i]); err != nil {
-				fatalf("Cherry-pick of %.8s failed (resolve conflicts, then continue):%s",
+				fatalf("Cherry-pick of %.8s failed. Resolve conflicts manually, then run: git cherry-pick --continue%s",
 					info.SkipHashes[i], recoveryHint(info.BackupName))
 			}
 		}
