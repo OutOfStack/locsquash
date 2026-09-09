@@ -3,6 +3,7 @@
 .claude
 
 *.exe
+locsquash
 /bin
 
 .gocache
