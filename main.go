@@ -19,7 +19,8 @@ func main() {
 	}
 
 	var input UserInput
-	var showVersion bool
+	var showVersion, doInstall, doUninstall bool
+	var asName string
 
 	flag.IntVar(&input.SquashCount, "n", 0, "Number of last commits to squash (must be at least 2)")
 	flag.StringVar(&input.From, "from", "", "Oldest commit in squash range: HEAD~N integer offset or commit hash/ref")
@@ -32,6 +33,9 @@ func main() {
 	flag.BoolVar(&input.Yes, "yes", false, "Skip confirmation prompt")
 	flag.BoolVar(&input.Yes, "y", false, "Skip confirmation prompt (shorthand)")
 	flag.BoolVar(&input.ListBackups, "list-backups", false, "List all backup branches and exit")
+	flag.BoolVar(&doInstall, "install", false, fmt.Sprintf("Install a git-<name> shim so 'git <name>' works, then exit (default name: %s)", defaultSubcommandName))
+	flag.BoolVar(&doUninstall, "uninstall", false, fmt.Sprintf("Remove the git-<name> shim and exit (default name: %s)", defaultSubcommandName))
+	flag.StringVar(&asName, "as", defaultSubcommandName, "Subcommand name to install or uninstall (used with -install/-uninstall)")
 	flag.BoolVar(&showVersion, "version", false, "Print version and exit")
 	flag.BoolVar(&showVersion, "v", false, "Print version and exit (shorthand)")
 
@@ -39,6 +43,20 @@ func main() {
 
 	if showVersion {
 		fmt.Println("locsquash", version)
+		os.Exit(0)
+	}
+
+	if doInstall {
+		if err := installGitSubcommand(asName); err != nil {
+			fatalf("Error: %v", err)
+		}
+		os.Exit(0)
+	}
+
+	if doUninstall {
+		if err := uninstallGitSubcommand(asName); err != nil {
+			fatalf("Error: %v", err)
+		}
 		os.Exit(0)
 	}
 

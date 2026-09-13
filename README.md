@@ -23,6 +23,25 @@ make build VERSION=v1.0.0     # version = v1.0.0
 locsquash -n <count> [options]
 ```
 
+### Git subcommand
+
+Install once to run it as `git lsq`:
+
+```bash
+locsquash -install              # creates git-lsq next to the locsquash binary
+git lsq -n 3                    # same as: locsquash -n 3
+locsquash -uninstall            # remove the git-lsq entry
+```
+
+Use `-as <name>` to pick a different suffix (letters, digits, `-`, `_`; must not start with `-`, and must not be an existing git command such as `status`):
+
+```bash
+locsquash -install -as squash   # now: git squash -n 3
+locsquash -uninstall -as squash
+```
+
+On Unix this installs a symlink; on Windows it copies the binary. The `locsquash` binary must be in a directory that is on your `PATH` for git to discover the subcommand.
+
 ### Required
 
 - `-n <count>` - Number of commits to squash (must be at least 2)
@@ -38,6 +57,9 @@ locsquash -n <count> [options]
 - `-dry-run` - Preview the git commands without executing them
 - `-print-recovery` - Print recovery commands and exit
 - `-list-backups` - List all backup branches and exit
+- `-install` - Install a git-`<name>` shim so `git <name>` works, then exit (default name: `lsq`)
+- `-uninstall` - Remove the git-`<name>` shim, then exit
+- `-as <name>` - Subcommand name to install or uninstall (default: `lsq`)
 - `-v`, `-version` - Print version and exit
 
 ## Examples
