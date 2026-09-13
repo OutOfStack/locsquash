@@ -2,8 +2,10 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"debug/buildinfo"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -12,6 +14,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
+	"strings"
 )
 
 const defaultSubcommandName = "lsq"
@@ -40,16 +44,45 @@ func classifyTarget(target, self string) targetState {
 	if sameFile(info, target, self) {
 		return targetIdentical
 	}
-	if info.Mode().IsRegular() && filesHaveSameMainModule(target, self) {
+	if isStaleShim(info, target, self) {
 		return targetOurs
 	}
 	return targetForeign
+}
+
+// isStaleShim reports whether target is an entry a previous locsquash  behind: a copied binary or a symlink whose
+// destination is  this module, or a dangling symlink. Anything else is foreign.
+func isStaleShim(info os.FileInfo, target, self string) bool {
+	if info.Mode()&os.ModeSymlink != 0 {
+		resolved, err := filepath.EvalSymlinks(target)
+		if err != nil {
+			// Dangling git-<name> link next to this binary: the old executable
+			// was moved or deleted. Removing or replacing it cannot lose data.
+			return true
+		}
+		return filesHaveSameMainModule(resolved, self)
+	}
+	return info.Mode().IsRegular() && filesHaveSameMainModule(target, self)
+}
+
+// reservedGitCommand reports whether git would dispatch <name> to one of its own commands instead of a git-<name>
+// executable on PATH. Built-ins and the scripts shipped in git's exec-path both take precedence over PATH. If git is
+// too old to answer, no name is treated as reserved.
+func reservedGitCommand(ctx context.Context, name string) bool {
+	out, err := gitStdout(ctx, "--list-cmds=builtins,main")
+	if err != nil {
+		return false
+	}
+	return slices.Contains(strings.Fields(out), name)
 }
 
 func installGitSubcommand(name string) error {
 	self, target, err := resolveInstallPaths(name)
 	if err != nil {
 		return err
+	}
+	if reservedGitCommand(context.Background(), name) {
+		return fmt.Errorf("%q is a built-in git command and would shadow the shim; choose another name with -as", name)
 	}
 
 	switch classifyTarget(target, self) {
@@ -103,10 +136,11 @@ func resolveInstallPaths(name string) (self, target string, err error) {
 		return "", "", fmt.Errorf("invalid subcommand name %q: only letters, digits, '-' and '_' are allowed, and the name must not start with '-'", name)
 	}
 
-	// os.Executable resolves symlinks on some platforms. Look up argv[0]
-	// instead, preserving the PATH entry or explicit path used to invoke us.
+	// os.Executable resolves symlinks on some platforms. Look up argv[0] instead, preserving the PATH entry or explicit
+	// path used to invoke us. ErrDot means the shell found us through a relative PATH entry; the  returned path is still
+	// correct, and filepath.Abs pins it to the cwd.
 	self, err = exec.LookPath(os.Args[0])
-	if err != nil {
+	if err != nil && !errors.Is(err, exec.ErrDot) {
 		return "", "", fmt.Errorf("cannot locate running binary: %w", err)
 	}
 	self, err = filepath.Abs(self)

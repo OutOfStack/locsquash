@@ -262,6 +262,57 @@ func TestInstall_RejectsInvalidName(t *testing.T) {
 	}
 }
 
+func TestInstall_RejectsReservedGitName(t *testing.T) {
+	bin := buildTestBinary(t)
+	target := gitSubcommandPathNamed(bin, "status")
+	t.Cleanup(func() { _ = os.Remove(target) })
+
+	out, err := runBinary(t, bin, "-install", "-as", "status")
+	if err == nil {
+		t.Fatalf("expected install -as status to fail, got success:\n%s", out)
+	}
+	if !strings.Contains(out, "built-in git command") {
+		t.Errorf("expected 'built-in git command' in error, got: %s", out)
+	}
+	if _, err = os.Lstat(target); !os.IsNotExist(err) {
+		t.Errorf("expected %s not to be created, lstat err: %v", target, err)
+	}
+}
+
+// TestInstall_ViaRelativePathEntry covers being launched by bare name through a
+// relative PATH entry such as ".", where exec.LookPath reports exec.ErrDot.
+func TestInstall_ViaRelativePathEntry(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("relative PATH lookup semantics differ on windows")
+	}
+	bin := buildTestBinary(t)
+	target := gitSubcommandPath(bin)
+	t.Cleanup(func() { _ = os.Remove(target) })
+
+	run := func(args ...string) (string, error) {
+		t.Helper()
+		cmd := exec.CommandContext(t.Context(), bin, args...) //nolint:gosec // controlled test invocation
+		cmd.Args[0] = filepath.Base(bin)                      // child sees a bare argv[0]
+		cmd.Dir = filepath.Dir(bin)
+		cmd.Env = append(os.Environ(), "PATH=."+string(os.PathListSeparator)+os.Getenv("PATH"))
+		out, err := cmd.CombinedOutput()
+		return string(out), err
+	}
+
+	if out, err := run("-install"); err != nil {
+		t.Fatalf("install via relative PATH entry failed: %v\n%s", err, out)
+	}
+	if _, err := os.Lstat(target); err != nil {
+		t.Errorf("expected %s to exist: %v", target, err)
+	}
+	if out, err := run("-uninstall"); err != nil {
+		t.Fatalf("uninstall via relative PATH entry failed: %v\n%s", err, out)
+	}
+	if _, err := os.Lstat(target); !os.IsNotExist(err) {
+		t.Errorf("expected %s to be removed, lstat err: %v", target, err)
+	}
+}
+
 func gitSubcommandPath(bin string) string {
 	return gitSubcommandPathNamed(bin, "lsq")
 }

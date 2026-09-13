@@ -33,7 +33,7 @@ git lsq -n 3                    # same as: locsquash -n 3
 locsquash -uninstall            # remove the git-lsq entry
 ```
 
-Use `-as <name>` to pick a different suffix (letters, digits, `-`, `_`; must not start with `-`):
+Use `-as <name>` to pick a different suffix (letters, digits, `-`, `_`; must not start with `-`, and must not be an existing git command such as `status`):
 
 ```bash
 locsquash -install -as squash   # now: git squash -n 3
